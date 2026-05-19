@@ -902,6 +902,11 @@ function detectSubscriptions(transactions) {
     if (txs.length < 2) return;
     txs.sort((a, b) => a.date - b.date);
 
+    // Require same amount every time (max 2% variation) — filters out restaurants/supermarkets
+    const amounts = txs.map(t => t.amount);
+    const maxAmt = Math.max(...amounts), minAmt = Math.min(...amounts);
+    if (maxAmt > 0 && (maxAmt - minAmt) / maxAmt > 0.02) return;
+
     const intervals = [];
     for (let i = 1; i < txs.length; i++) {
       intervals.push(Math.round((txs[i].date - txs[i-1].date) / 86400000));
