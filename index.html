@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Suscripciones">
 <meta name="theme-color" content="#6366f1">
 <link rel="apple-touch-icon" href="icon.png">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
 :root {
@@ -171,7 +172,7 @@ input[type=date] { height: 42px; }
       <button class="import-btn" onclick="document.getElementById('csvInput').click()" title="Importar CSV de Revolut">📥</button>
       <button class="add-fab" onclick="openModal()">＋</button>
     </div>
-    <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="handleCSV(event)">
+    <input type="file" id="csvInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFile(event)">
   </div>
   <div class="summary">
     <div class="sum-card">
@@ -756,24 +757,61 @@ function parseCSVLine(line) {
   return result;
 }
 
-function handleCSV(event) {
+function handleFile(event) {
   const file = event.target.files[0];
   if (!file) return;
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const suggestions = parseRevolutCSV(e.target.result);
+      let suggestions;
+      if (isExcel) {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        suggestions = parseRevolutRows(rows);
+      } else {
+        suggestions = parseRevolutCSV(e.target.result);
+      }
       if (!suggestions.length) {
         toast('No se detectaron pagos recurrentes');
         return;
       }
       openImportModal(suggestions);
     } catch (err) {
-      toast('Error leyendo el CSV');
+      toast('Error leyendo el archivo');
     }
     event.target.value = '';
   };
-  reader.readAsText(file, 'UTF-8');
+  if (isExcel) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file, 'UTF-8');
+}
+
+function parseRevolutRows(rows) {
+  // Normalize keys (Revolut Excel has same columns as CSV)
+  const transactions = [];
+  rows.forEach(row => {
+    const keys = Object.keys(row);
+    const findKey = (...terms) => keys.find(k => terms.some(t => k.toLowerCase().includes(t)));
+    const amountKey = findKey('amount');
+    const descKey = findKey('description');
+    const dateKey = findKey('completed date', 'date');
+    const stateKey = findKey('state');
+
+    const amount = parseFloat(String(row[amountKey] || '0').replace(',', '.'));
+    const desc = String(row[descKey] || '').trim();
+    const state = String(row[stateKey] || 'COMPLETED').trim().toUpperCase();
+    let date = row[dateKey];
+
+    if (!desc || isNaN(amount) || amount >= 0) return;
+    if (state && !['COMPLETED', 'SETTLED'].includes(state)) return;
+
+    if (!(date instanceof Date)) date = new Date(date);
+    if (isNaN(date.getTime())) return;
+
+    transactions.push({ desc, amount: Math.abs(amount), date });
+  });
+  return detectSubscriptions(transactions);
 }
 
 function parseRevolutCSV(text) {
