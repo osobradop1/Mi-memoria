@@ -1,0 +1,18 @@
+{
+  "name": "Mis Suscripciones",
+  "short_name": "Suscripciones",
+  "description": "Control de gastos recurrentes y suscripciones",
+  "start_url": "/suscripciones/",
+  "display": "standalone",
+  "background_color": "#f5f3ff",
+  "theme_color": "#6366f1",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
