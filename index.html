@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Mis Suscripciones</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Suscripciones">
+<meta name="theme-color" content="#6366f1">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+:root {
+  --bg: #f5f3ff;
+  --surface: #ffffff;
+  --surface2: #ede9fe;
+  --border: #c4b5fd;
+  --accent: #6366f1;
+  --accent2: #4f46e5;
+  --accent-light: #ede9fe;
+  --text: #0f172a;
+  --muted: #64748b;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warn: #f59e0b;
+  --green: #059669;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); max-width: 430px; margin: 0 auto; min-height: 100vh; }
+
+/* HEADER */
+.header { padding: 16px 16px 12px; background: var(--accent); color: white; position: sticky; top: 0; z-index: 100; }
+.header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; }
+.logo span { font-size: 11px; font-family: 'DM Sans', sans-serif; font-weight: 400; opacity: .75; display: block; margin-top: -2px; }
+.add-fab { width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,.2); border: none; color: white; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* RESUMEN CARDS */
+.summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sum-card { background: rgba(255,255,255,.15); border-radius: 14px; padding: 12px 14px; border: 1px solid rgba(255,255,255,.2); }
+.sum-card .label { font-size: 10px; opacity: .8; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+.sum-card .value { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: white; }
+.sum-card .sub { font-size: 11px; opacity: .7; margin-top: 1px; }
+
+/* TABS */
+.tabs { display: flex; gap: 2px; padding: 8px 10px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 147px; z-index: 99; }
+.tab { flex: 1; padding: 7px 2px; text-align: center; font-size: 10px; font-weight: 600; color: var(--muted); border-radius: 10px; cursor: pointer; transition: all .2s; }
+.tab.active { color: var(--accent); background: var(--accent-light); }
+.tab-icon { font-size: 17px; display: block; margin-bottom: 1px; }
+
+/* SECTIONS */
+.section { display: none; padding: 12px 10px 100px; }
+.section.active { display: block; }
+
+/* FILTER BAR */
+.filter-bar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; scrollbar-width: none; }
+.filter-bar::-webkit-scrollbar { display: none; }
+.filter-chip { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1.5px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; white-space: nowrap; transition: all .2s; flex-shrink: 0; }
+.filter-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* SUB CARD */
+.sub-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-bottom: 8px; box-shadow: 0 2px 8px rgba(99,102,241,.05); }
+.sub-header { display: flex; align-items: center; gap: 12px; }
+.sub-icon { width: 46px; height: 46px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+.sub-info { flex: 1; min-width: 0; }
+.sub-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.sub-cat { font-size: 11px; color: var(--muted); }
+.sub-price { text-align: right; flex-shrink: 0; }
+.sub-price .amount { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--accent); }
+.sub-price .cycle { font-size: 10px; color: var(--muted); }
+.sub-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.renewal-badge { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+.renewal-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-ok { background: var(--success); }
+.dot-warn { background: var(--warn); }
+.dot-danger { background: var(--danger); }
+.sub-actions { display: flex; gap: 6px; }
+.btn-sm { padding: 5px 11px; border-radius: 8px; font-size: 11px; font-weight: 600; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.btn-edit { background: var(--accent-light); color: var(--accent); }
+.btn-del { background: #fee2e2; color: var(--danger); }
+.inactive-badge { font-size: 10px; background: #f1f5f9; color: var(--muted); border-radius: 6px; padding: 3px 8px; font-weight: 600; }
+
+/* MONTHLY VIEW */
+.month-equiv { font-size: 11px; color: var(--muted); }
+
+/* PRÓXIMOS */
+.timeline-item { background: var(--surface); border: 1px solid var(--border); border-radius: 13px; padding: 13px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+.timeline-date { text-align: center; min-width: 42px; }
+.timeline-date .day { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: var(--accent); line-height: 1; }
+.timeline-date .month { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+.timeline-info { flex: 1; }
+.timeline-info .name { font-size: 14px; font-weight: 500; }
+.timeline-info .cycle-label { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.timeline-price { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: var(--accent); }
+.days-left { font-size: 10px; padding: 3px 9px; border-radius: 20px; font-weight: 600; }
+.days-soon { background: #fef3c7; color: #92400e; }
+.days-urgent { background: #fee2e2; color: #991b1b; }
+.days-ok { background: #d1fae5; color: #065f46; }
+
+/* ESTADÍSTICAS */
+.stat-section { margin-bottom: 16px; }
+.stat-title { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.stat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.stat-label { font-size: 12px; color: var(--muted); min-width: 90px; }
+.stat-bar-wrap { flex: 1; background: var(--surface2); border-radius: 20px; height: 8px; overflow: hidden; }
+.stat-bar { height: 100%; border-radius: 20px; background: var(--accent); transition: width .5s; }
+.stat-val { font-size: 12px; font-weight: 600; min-width: 50px; text-align: right; }
+
+/* MODAL */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 500; display: none; align-items: flex-end; }
+.modal-bg.on { display: flex; }
+.modal { background: var(--surface); border-radius: 24px 24px 0 0; padding: 20px 16px 40px; width: 100%; max-height: 90vh; overflow-y: auto; }
+.modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 16px; }
+.modal h3 { font-family: 'Syne', sans-serif; font-size: 17px; color: var(--accent); margin-bottom: 16px; }
+.modal-close { float: right; background: none; border: none; font-size: 22px; cursor: pointer; color: var(--muted); margin-top: -4px; }
+
+/* FORM */
+.form-row { margin-bottom: 10px; }
+.form-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; display: block; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+.fi, .fs { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--text); font-family: 'DM Sans', sans-serif; outline: none; transition: border-color .2s; -webkit-appearance: none; }
+.fi:focus, .fs:focus { border-color: var(--accent); }
+.icon-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 4px; }
+.icon-opt { width: 100%; aspect-ratio: 1; border-radius: 10px; border: 2px solid var(--border); background: var(--surface2); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+.icon-opt.sel { border-color: var(--accent); background: var(--accent-light); }
+.save-btn { width: 100%; padding: 13px; background: var(--accent); color: white; border: none; border-radius: 12px; font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 4px; }
+.save-btn:active { background: var(--accent2); }
+.del-btn-full { width: 100%; padding: 11px; background: transparent; color: var(--danger); border: 1.5px solid var(--danger); border-radius: 12px; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.toggle-label { font-size: 14px; color: var(--text); }
+.toggle { width: 44px; height: 26px; border-radius: 13px; background: var(--border); border: none; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; }
+.toggle.on { background: var(--accent); }
+.toggle::after { content: ''; position: absolute; width: 20px; height: 20px; background: white; border-radius: 50%; top: 3px; left: 3px; transition: left .2s; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.toggle.on::after { left: 21px; }
+
+/* EMPTY */
+.empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+.empty .ei { font-size: 48px; margin-bottom: 12px; }
+.empty p { font-size: 13px; line-height: 1.6; }
+.empty .cta { margin-top: 16px; padding: 11px 24px; background: var(--accent); color: white; border: none; border-radius: 12px; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--accent); color: white; padding: 10px 22px; border-radius: 28px; font-size: 13px; font-weight: 500; opacity: 0; transition: all .3s; z-index: 9999; white-space: nowrap; box-shadow: 0 4px 14px rgba(99,102,241,.25); }
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+input[type=date] { height: 42px; }
+.color-strip { height: 4px; border-radius: 0 0 12px 12px; margin: -14px -14px 12px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo">💳 Suscripciones <span>Control de gastos recurrentes</span></div>
+    <button class="add-fab" onclick="openModal()">＋</button>
+  </div>
+  <div class="summary">
+    <div class="sum-card">
+      <div class="label">Gasto mensual</div>
+      <div class="value" id="totalMonth">0,00€</div>
+      <div class="sub" id="totalCount">0 activas</div>
+    </div>
+    <div class="sum-card">
+      <div class="label">Gasto anual</div>
+      <div class="value" id="totalYear">0,00€</div>
+      <div class="sub" id="nextRenewal">—</div>
+    </div>
+  </div>
+</div>
+
+<div class="tabs" id="tabBar">
+  <div class="tab active" onclick="switchTab('lista',this)"><span class="tab-icon">📋</span>Lista</div>
+  <div class="tab" onclick="switchTab('proximas',this)"><span class="tab-icon">📅</span>Próximas</div>
+  <div class="tab" onclick="switchTab('stats',this)"><span class="tab-icon">📊</span>Estadísticas</div>
+</div>
+
+<!-- LISTA -->
+<div class="section active" id="sec-lista">
+  <div class="filter-bar" id="filterBar">
+    <div class="filter-chip active" onclick="setFilter('todas',this)">Todas</div>
+    <div class="filter-chip" onclick="setFilter('streaming',this)">🎬 Streaming</div>
+    <div class="filter-chip" onclick="setFilter('musica',this)">🎵 Música</div>
+    <div class="filter-chip" onclick="setFilter('software',this)">💻 Software</div>
+    <div class="filter-chip" onclick="setFilter('juegos',this)">🎮 Juegos</div>
+    <div class="filter-chip" onclick="setFilter('salud',this)">💪 Salud</div>
+    <div class="filter-chip" onclick="setFilter('noticias',this)">📰 Noticias</div>
+    <div class="filter-chip" onclick="setFilter('otros',this)">📦 Otros</div>
+  </div>
+  <div id="subList"></div>
+</div>
+
+<!-- PRÓXIMAS -->
+<div class="section" id="sec-proximas">
+  <div id="timelineList"></div>
+</div>
+
+<!-- ESTADÍSTICAS -->
+<div class="section" id="sec-stats">
+  <div id="statsContent"></div>
+</div>
+
+<!-- MODAL AÑADIR/EDITAR -->
+<div class="modal-bg" id="modalBg" onclick="closeModalBg(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h3 id="modalTitle">Nueva suscripción</h3>
+
+    <div class="form-row">
+      <label class="form-label">Icono</label>
+      <div class="icon-grid" id="iconGrid"></div>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Nombre</label>
+      <input class="fi" id="fName" type="text" placeholder="Ej: Netflix, Spotify...">
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Categoría</label>
+      <select class="fs" id="fCat">
+        <option value="streaming">🎬 Streaming</option>
+        <option value="musica">🎵 Música</option>
+        <option value="software">💻 Software</option>
+        <option value="juegos">🎮 Juegos</option>
+        <option value="salud">💪 Salud</option>
+        <option value="noticias">📰 Noticias</option>
+        <option value="otros">📦 Otros</option>
+      </select>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-row">
+        <label class="form-label">Precio (€)</label>
+        <input class="fi" id="fPrice" type="number" step="0.01" placeholder="9,99">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Ciclo</label>
+        <select class="fs" id="fCycle">
+          <option value="monthly">Mensual</option>
+          <option value="annual">Anual</option>
+          <option value="quarterly">Trimestral</option>
+          <option value="weekly">Semanal</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Próxima renovación</label>
+      <input class="fi" id="fRenewal" type="date">
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Color</label>
+      <select class="fs" id="fColor">
+        <option value="#6366f1">🟣 Morado</option>
+        <option value="#3b82f6">🔵 Azul</option>
+        <option value="#10b981">🟢 Verde</option>
+        <option value="#f59e0b">🟡 Ámbar</option>
+        <option value="#ef4444">🔴 Rojo</option>
+        <option value="#ec4899">🩷 Rosa</option>
+        <option value="#0ea5e9">🩵 Cian</option>
+        <option value="#8b5cf6">💜 Violeta</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="toggle-row">
+        <span class="toggle-label">Suscripción activa</span>
+        <button class="toggle on" id="fActive" onclick="toggleActive()"></button>
+      </div>
+    </div>
+
+    <button class="save-btn" onclick="saveSub()">Guardar</button>
+    <button class="del-btn-full" id="delBtn" style="display:none" onclick="deleteSub()">Eliminar suscripción</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ICONS = ['🎬','🎵','💻','🎮','💪','📰','📦','☁️','🛡️','🎨','📧','📱','🔐','🎓','🏋️','📺','🎧','🛒','🌐','🤖','⚡','🔧','💼','🎙️'];
+const CAT_COLORS = { streaming:'#ef4444', musica:'#ec4899', software:'#6366f1', juegos:'#8b5cf6', salud:'#10b981', noticias:'#3b82f6', otros:'#64748b' };
+const CAT_LABELS = { streaming:'🎬 Streaming', musica:'🎵 Música', software:'💻 Software', juegos:'🎮 Juegos', salud:'💪 Salud', noticias:'📰 Noticias', otros:'📦 Otros' };
+const CYCLE_LABELS = { monthly:'Mensual', annual:'Anual', quarterly:'Trimestral', weekly:'Semanal' };
+
+let data = JSON.parse(localStorage.getItem('subs_data') || '{"subs":[]}');
+let editId = null;
+let selIcon = '💳';
+let activeFilter = 'todas';
+let currentTab = 'lista';
+let activeToggle = true;
+
+function save() { localStorage.setItem('subs_data', JSON.stringify(data)); }
+
+function toMonthly(price, cycle) {
+  if (cycle === 'monthly') return price;
+  if (cycle === 'annual') return price / 12;
+  if (cycle === 'quarterly') return price / 3;
+  if (cycle === 'weekly') return price * 4.33;
+  return price;
+}
+
+function toAnnual(price, cycle) {
+  if (cycle === 'annual') return price;
+  if (cycle === 'monthly') return price * 12;
+  if (cycle === 'quarterly') return price * 4;
+  if (cycle === 'weekly') return price * 52;
+  return price;
+}
+
+function fmt(n) { return n.toFixed(2).replace('.', ',') + '€'; }
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(dateStr); d.setHours(0,0,0,0);
+  return Math.round((d - today) / 86400000);
+}
+
+function updateSummary() {
+  const active = data.subs.filter(s => s.active);
+  const monthly = active.reduce((a, s) => a + toMonthly(s.price, s.cycle), 0);
+  const annual = active.reduce((a, s) => a + toAnnual(s.price, s.cycle), 0);
+  document.getElementById('totalMonth').textContent = fmt(monthly);
+  document.getElementById('totalYear').textContent = fmt(annual);
+  document.getElementById('totalCount').textContent = active.length + ' activa' + (active.length !== 1 ? 's' : '');
+
+  const upcoming = active
+    .filter(s => s.renewal)
+    .map(s => ({ ...s, days: daysUntil(s.renewal) }))
+    .filter(s => s.days !== null && s.days >= 0)
+    .sort((a, b) => a.days - b.days);
+
+  if (upcoming.length) {
+    const next = upcoming[0];
+    const d = next.days;
+    document.getElementById('nextRenewal').textContent =
+      d === 0 ? `⚠️ ${next.name} vence hoy` :
+      d === 1 ? `⏰ ${next.name} mañana` :
+      `📅 ${next.name} en ${d} días`;
+  } else {
+    document.getElementById('nextRenewal').textContent = 'Sin renovaciones próximas';
+  }
+}
+
+function renderList() {
+  const list = document.getElementById('subList');
+  let subs = data.subs;
+  if (activeFilter !== 'todas') subs = subs.filter(s => s.cat === activeFilter);
+
+  if (!subs.length) {
+    list.innerHTML = `<div class="empty"><div class="ei">${activeFilter === 'todas' ? '💳' : CAT_LABELS[activeFilter]?.charAt(0) || '📦'}</div><p>${activeFilter === 'todas' ? 'Aún no tienes suscripciones.<br>Toca <b>＋</b> para añadir la primera.' : 'No hay suscripciones en esta categoría.'}</p>${activeFilter === 'todas' ? '<button class="cta" onclick="openModal()">Añadir suscripción</button>' : ''}</div>`;
+    return;
+  }
+
+  list.innerHTML = subs.map(s => {
+    const days = daysUntil(s.renewal);
+    const dotClass = days === null ? 'dot-ok' : days < 0 ? 'dot-ok' : days <= 3 ? 'dot-danger' : days <= 10 ? 'dot-warn' : 'dot-ok';
+    const renewalText = days === null ? 'Sin fecha' : days < 0 ? 'Renovado' : days === 0 ? 'Vence hoy' : days === 1 ? 'Mañana' : `En ${days} días`;
+    const monthly = toMonthly(s.price, s.cycle);
+    return `
+    <div class="sub-card" style="opacity:${s.active ? 1 : .55}">
+      <div class="color-strip" style="background:${s.color || CAT_COLORS[s.cat] || '#6366f1'}"></div>
+      <div class="sub-header">
+        <div class="sub-icon" style="background:${(s.color || CAT_COLORS[s.cat] || '#6366f1')}22">${s.icon}</div>
+        <div class="sub-info">
+          <div class="sub-name">${s.name}</div>
+          <div class="sub-cat">${CAT_LABELS[s.cat] || 'Otros'}</div>
+        </div>
+        <div class="sub-price">
+          <div class="amount">${fmt(s.price)}</div>
+          <div class="cycle">${CYCLE_LABELS[s.cycle]}</div>
+          ${s.cycle !== 'monthly' ? `<div class="month-equiv">${fmt(monthly)}/mes</div>` : ''}
+        </div>
+      </div>
+      <div class="sub-footer">
+        <div class="renewal-badge">
+          <div class="renewal-dot ${dotClass}"></div>
+          <span>${renewalText}</span>
+          ${!s.active ? '<span class="inactive-badge">Pausada</span>' : ''}
+        </div>
+        <div class="sub-actions">
+          <button class="btn-sm btn-edit" onclick="openModal('${s.id}')">Editar</button>
+          <button class="btn-sm btn-del" onclick="quickDelete('${s.id}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTimeline() {
+  const list = document.getElementById('timelineList');
+  const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const active = data.subs.filter(s => s.active && s.renewal);
+
+  if (!active.length) {
+    list.innerHTML = `<div class="empty"><div class="ei">📅</div><p>Añade fechas de renovación a tus suscripciones para ver aquí cuándo vencen.</p></div>`;
+    return;
+  }
+
+  // Generate next 3 months of renewals
+  const renewals = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  active.forEach(s => {
+    let d = new Date(s.renewal); d.setHours(0,0,0,0);
+    // If past, advance to next renewal
+    while (d < today) {
+      if (s.cycle === 'monthly') d.setMonth(d.getMonth() + 1);
+      else if (s.cycle === 'annual') d.setFullYear(d.getFullYear() + 1);
+      else if (s.cycle === 'quarterly') d.setMonth(d.getMonth() + 3);
+      else if (s.cycle === 'weekly') d.setDate(d.getDate() + 7);
+      else break;
+    }
+    // Add next 3 occurrences
+    for (let i = 0; i < 3; i++) {
+      const days = Math.round((d - today) / 86400000);
+      if (days > 120) break;
+      renewals.push({ ...s, nextDate: new Date(d), days });
+      if (s.cycle === 'monthly') d.setMonth(d.getMonth() + 1);
+      else if (s.cycle === 'annual') d.setFullYear(d.getFullYear() + 1);
+      else if (s.cycle === 'quarterly') d.setMonth(d.getMonth() + 3);
+      else if (s.cycle === 'weekly') d.setDate(d.getDate() + 7);
+      else break;
+    }
+  });
+
+  renewals.sort((a, b) => a.nextDate - b.nextDate);
+
+  if (!renewals.length) {
+    list.innerHTML = `<div class="empty"><div class="ei">✅</div><p>Sin renovaciones próximas en los próximos 4 meses.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = renewals.map(r => {
+    const daysClass = r.days <= 3 ? 'days-urgent' : r.days <= 10 ? 'days-soon' : 'days-ok';
+    const daysText = r.days === 0 ? 'Hoy' : r.days === 1 ? 'Mañana' : `${r.days}d`;
+    return `
+    <div class="timeline-item">
+      <div class="timeline-date">
+        <div class="day">${r.nextDate.getDate()}</div>
+        <div class="month">${months[r.nextDate.getMonth()]}</div>
+      </div>
+      <div style="width:3px;height:40px;border-radius:2px;background:${r.color || CAT_COLORS[r.cat] || '#6366f1'};flex-shrink:0"></div>
+      <div class="timeline-info">
+        <div class="name">${r.icon} ${r.name}</div>
+        <div class="cycle-label">${CYCLE_LABELS[r.cycle]}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="timeline-price">${fmt(r.price)}</div>
+        <div class="days-left ${daysClass}">${daysText}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderStats() {
+  const el = document.getElementById('statsContent');
+  const active = data.subs.filter(s => s.active);
+  if (!active.length) {
+    el.innerHTML = `<div class="empty"><div class="ei">📊</div><p>Añade suscripciones para ver las estadísticas.</p></div>`;
+    return;
+  }
+
+  const totalMonthly = active.reduce((a, s) => a + toMonthly(s.price, s.cycle), 0);
+  const totalAnnual = active.reduce((a, s) => a + toAnnual(s.price, s.cycle), 0);
+
+  // By category
+  const byCat = {};
+  active.forEach(s => {
+    const k = s.cat || 'otros';
+    if (!byCat[k]) byCat[k] = { total: 0, count: 0 };
+    byCat[k].total += toMonthly(s.price, s.cycle);
+    byCat[k].count++;
+  });
+
+  const catRows = Object.entries(byCat)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([cat, val]) => {
+      const pct = totalMonthly > 0 ? (val.total / totalMonthly * 100) : 0;
+      return `<div class="stat-row">
+        <span class="stat-label">${CAT_LABELS[cat] || cat}</span>
+        <div class="stat-bar-wrap"><div class="stat-bar" style="width:${pct}%;background:${CAT_COLORS[cat] || '#6366f1'}"></div></div>
+        <span class="stat-val">${fmt(val.total)}</span>
+      </div>`;
+    }).join('');
+
+  // By cycle
+  const byCycle = {};
+  active.forEach(s => {
+    if (!byCycle[s.cycle]) byCycle[s.cycle] = 0;
+    byCycle[s.cycle]++;
+  });
+
+  const cycleRows = Object.entries(byCycle).map(([c, n]) =>
+    `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${CYCLE_LABELS[c]}</span><b>${n} suscripción${n !== 1 ? 'es' : ''}</b>
+    </div>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="stat-section">
+      <div class="stat-title">Gasto por categoría / mes</div>
+      ${catRows}
+    </div>
+    <div class="stat-section" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span>Total mensual</span><b style="color:var(--accent);font-family:'Syne',sans-serif;font-size:15px">${fmt(totalMonthly)}</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span>Total anual</span><b style="color:var(--accent);font-family:'Syne',sans-serif;font-size:15px">${fmt(totalAnnual)}</b>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px">
+        <span>Media por suscripción</span><b>${fmt(totalMonthly / active.length)}/mes</b>
+      </div>
+    </div>
+    <div class="stat-section">
+      <div class="stat-title">Por tipo de ciclo</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:0 14px">
+        ${cycleRows}
+      </div>
+    </div>
+    ${data.subs.filter(s => !s.active).length ? `
+    <div class="stat-section">
+      <div class="stat-title">Pausadas</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;font-size:13px;color:var(--muted)">
+        ${data.subs.filter(s => !s.active).length} suscripción${data.subs.filter(s => !s.active).length !== 1 ? 'es' : ''} pausada${data.subs.filter(s => !s.active).length !== 1 ? 's' : ''} — ahorras ${fmt(data.subs.filter(s => !s.active).reduce((a,s)=>a+toMonthly(s.price,s.cycle),0))}/mes
+      </div>
+    </div>` : ''}
+  `;
+}
+
+function renderAll() {
+  updateSummary();
+  renderList();
+  renderTimeline();
+  renderStats();
+}
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + tab).classList.add('active');
+  currentTab = tab;
+}
+
+function setFilter(f, el) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  activeFilter = f;
+  renderList();
+}
+
+// MODAL
+function buildIconGrid(current) {
+  const grid = document.getElementById('iconGrid');
+  grid.innerHTML = ICONS.map(ic => `<div class="icon-opt${ic === current ? ' sel' : ''}" onclick="selectIcon('${ic}',this)">${ic}</div>`).join('');
+}
+
+function selectIcon(ic, el) {
+  document.querySelectorAll('.icon-opt').forEach(e => e.classList.remove('sel'));
+  el.classList.add('sel');
+  selIcon = ic;
+}
+
+function openModal(id) {
+  editId = id || null;
+  activeToggle = true;
+  if (id) {
+    const s = data.subs.find(x => x.id === id);
+    document.getElementById('modalTitle').textContent = 'Editar suscripción';
+    document.getElementById('fName').value = s.name;
+    document.getElementById('fCat').value = s.cat;
+    document.getElementById('fPrice').value = s.price;
+    document.getElementById('fCycle').value = s.cycle;
+    document.getElementById('fRenewal').value = s.renewal || '';
+    document.getElementById('fColor').value = s.color || '#6366f1';
+    document.getElementById('delBtn').style.display = '';
+    selIcon = s.icon;
+    activeToggle = s.active;
+    buildIconGrid(s.icon);
+  } else {
+    document.getElementById('modalTitle').textContent = 'Nueva suscripción';
+    document.getElementById('fName').value = '';
+    document.getElementById('fCat').value = 'streaming';
+    document.getElementById('fPrice').value = '';
+    document.getElementById('fCycle').value = 'monthly';
+    document.getElementById('fRenewal').value = new Date().toISOString().split('T')[0];
+    document.getElementById('fColor').value = '#6366f1';
+    document.getElementById('delBtn').style.display = 'none';
+    selIcon = '💳';
+    buildIconGrid('💳');
+  }
+  updateToggleUI();
+  document.getElementById('modalBg').classList.add('on');
+}
+
+function closeModal() { document.getElementById('modalBg').classList.remove('on'); }
+function closeModalBg(e) { if (e.target === document.getElementById('modalBg')) closeModal(); }
+
+function toggleActive() {
+  activeToggle = !activeToggle;
+  updateToggleUI();
+}
+function updateToggleUI() {
+  const btn = document.getElementById('fActive');
+  btn.classList.toggle('on', activeToggle);
+}
+
+function saveSub() {
+  const name = document.getElementById('fName').value.trim();
+  const price = parseFloat(document.getElementById('fPrice').value);
+  if (!name) { toast('Pon un nombre'); return; }
+  if (!price || price <= 0) { toast('Pon un precio válido'); return; }
+
+  const sub = {
+    id: editId || String(Date.now()),
+    name,
+    icon: selIcon,
+    cat: document.getElementById('fCat').value,
+    price,
+    cycle: document.getElementById('fCycle').value,
+    renewal: document.getElementById('fRenewal').value || null,
+    color: document.getElementById('fColor').value,
+    active: activeToggle,
+  };
+
+  if (editId) {
+    const idx = data.subs.findIndex(x => x.id === editId);
+    data.subs[idx] = sub;
+    toast('Guardado');
+  } else {
+    data.subs.push(sub);
+    toast('Suscripción añadida');
+  }
+  save();
+  renderAll();
+  closeModal();
+}
+
+function quickDelete(id) {
+  data.subs = data.subs.filter(s => s.id !== id);
+  save(); renderAll();
+  toast('Eliminada');
+}
+
+function deleteSub() {
+  if (!editId) return;
+  data.subs = data.subs.filter(s => s.id !== editId);
+  save(); renderAll();
+  closeModal();
+  toast('Suscripción eliminada');
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  setTimeout(() => t.classList.remove('on'), 2500);
+}
+
+// Init with sample data if empty
+if (!data.subs.length) {
+  const today = new Date();
+  const nextMonth = d => { const x = new Date(today); x.setDate(d); if (x < today) x.setMonth(x.getMonth()+1); return x.toISOString().split('T')[0]; };
+  data.subs = [
+    { id:'1', name:'Netflix', icon:'🎬', cat:'streaming', price:17.99, cycle:'monthly', renewal: nextMonth(14), color:'#ef4444', active:true },
+    { id:'2', name:'Spotify', icon:'🎵', cat:'musica', price:10.99, cycle:'monthly', renewal: nextMonth(22), color:'#10b981', active:true },
+    { id:'3', name:'iCloud 50GB', icon:'☁️', cat:'software', price:0.99, cycle:'monthly', renewal: nextMonth(8), color:'#3b82f6', active:true },
+  ];
+  save();
+}
+
+renderAll();
+</script>
+</body>
+</html>
