@@ -788,30 +788,47 @@ function handleFile(event) {
 }
 
 function parseRevolutRows(rows) {
-  // Normalize keys (Revolut Excel has same columns as CSV)
+  if (!rows.length) return [];
+  const keys = Object.keys(rows[0]);
+
+  const findKey = (...terms) => keys.find(k =>
+    terms.some(t => k.toLowerCase().replace(/\s+/g,'').includes(t.toLowerCase().replace(/\s+/g,'')))
+  );
+
+  const amountKey  = findKey('amount');
+  const descKey    = findKey('description');
+  const dateKey    = findKey('completeddate') || findKey('date');
+  const typeKey    = findKey('type');
+  const stateKey   = findKey('state');
+
+  const SKIP_TYPES = ['TOPUP','TRANSFER','EXCHANGE','ATM','REFUND','CASHBACK','REWARD'];
+
   const transactions = [];
   rows.forEach(row => {
-    const keys = Object.keys(row);
-    const findKey = (...terms) => keys.find(k => terms.some(t => k.toLowerCase().includes(t)));
-    const amountKey = findKey('amount');
-    const descKey = findKey('description');
-    const dateKey = findKey('completed date', 'date');
-    const stateKey = findKey('state');
+    const type  = String(row[typeKey] || '').toUpperCase();
+    if (SKIP_TYPES.some(t => type.includes(t))) return;
 
-    const amount = parseFloat(String(row[amountKey] || '0').replace(',', '.'));
     const desc = String(row[descKey] || '').trim();
-    const state = String(row[stateKey] || 'COMPLETED').trim().toUpperCase();
+    if (!desc) return;
+
+    const amountRaw = String(row[amountKey] || '').replace(',', '.').replace(/[^0-9.\-]/g, '');
+    const amount = parseFloat(amountRaw);
+    if (isNaN(amount) || amount === 0) return;
+
     let date = row[dateKey];
-
-    if (!desc || isNaN(amount) || amount >= 0) return;
-    if (state && !['COMPLETED', 'SETTLED'].includes(state)) return;
-
-    if (!(date instanceof Date)) date = new Date(date);
+    if (!(date instanceof Date)) {
+      if (typeof date === 'number') date = new Date((date - 25569) * 86400000);
+      else date = new Date(String(date));
+    }
     if (isNaN(date.getTime())) return;
 
-    transactions.push({ desc, amount: Math.abs(amount), date });
+    transactions.push({ desc, amount: Math.abs(amount), date, neg: amount < 0 });
   });
-  return detectSubscriptions(transactions);
+
+  // Revolut may export outgoing as negative or positive depending on format
+  const anyNeg = transactions.some(t => t.neg);
+  const filtered = anyNeg ? transactions.filter(t => t.neg) : transactions;
+  return detectSubscriptions(filtered);
 }
 
 function parseRevolutCSV(text) {
@@ -819,50 +836,59 @@ function parseRevolutCSV(text) {
   if (lines.length < 2) return [];
 
   const rawHeader = parseCSVLine(lines[0]);
-  const header = rawHeader.map(h => h.trim().toLowerCase().replace(/"/g, ''));
+  const header = rawHeader.map(h => h.trim().toLowerCase().replace(/"/g,'').replace(/\s+/g,''));
+
+  const findIdx = (...terms) => header.findIndex(h => terms.some(t => h.includes(t.toLowerCase().replace(/\s+/g,''))));
 
   const idx = {
-    type: header.findIndex(h => h === 'type'),
-    desc: header.findIndex(h => h.includes('description')),
-    amount: header.findIndex(h => h === 'amount'),
-    date: header.findIndex(h => h.includes('completed date') || (h.includes('date') && !h.includes('started'))),
-    state: header.findIndex(h => h === 'state'),
+    type:   findIdx('type'),
+    desc:   findIdx('description'),
+    amount: findIdx('amount'),
+    date:   findIdx('completeddate', 'date'),
+    state:  findIdx('state'),
   };
+
+  const SKIP_TYPES = ['TOPUP','TRANSFER','EXCHANGE','ATM','REFUND','CASHBACK','REWARD'];
 
   const transactions = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i]);
     if (cols.length < 3) continue;
 
-    const type = idx.type >= 0 ? cols[idx.type]?.trim() : '';
-    const state = idx.state >= 0 ? cols[idx.state]?.trim() : 'COMPLETED';
-    const amountRaw = cols[idx.amount]?.trim().replace(',', '.') || '0';
+    const type  = idx.type >= 0  ? cols[idx.type]?.trim().toUpperCase()  : '';
+    if (SKIP_TYPES.some(t => type.includes(t))) continue;
+
+    const desc  = idx.desc >= 0  ? cols[idx.desc]?.trim()                : '';
+    if (!desc) continue;
+
+    const amountRaw = (idx.amount >= 0 ? cols[idx.amount] : '0').replace(',','.').replace(/[^0-9.\-]/g,'');
     const amount = parseFloat(amountRaw);
-    const desc = idx.desc >= 0 ? cols[idx.desc]?.trim() : '';
-    const dateRaw = idx.date >= 0 ? cols[idx.date]?.trim() : '';
+    if (isNaN(amount) || amount === 0) continue;
 
-    if (!desc || isNaN(amount) || amount >= 0) continue;
-    if (state && !['COMPLETED', 'SETTLED'].includes(state.toUpperCase())) continue;
-
-    const date = new Date(dateRaw);
+    const dateStr = idx.date >= 0 ? cols[idx.date]?.trim() : '';
+    const date = new Date(dateStr);
     if (isNaN(date.getTime())) continue;
 
-    transactions.push({ desc, amount: Math.abs(amount), date });
+    transactions.push({ desc, amount: Math.abs(amount), date, neg: amount < 0 });
   }
 
-  return detectSubscriptions(transactions);
+  const anyNeg = transactions.some(t => t.neg);
+  const filtered = anyNeg ? transactions.filter(t => t.neg) : transactions;
+  return detectSubscriptions(filtered);
 }
 
+
 function detectSubscriptions(transactions) {
+  // Group case-insensitively, keep original name
   const groups = {};
   transactions.forEach(t => {
-    const key = t.desc.trim();
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(t);
+    const key = t.desc.toLowerCase().trim().replace(/\s+/g, ' ');
+    if (!groups[key]) groups[key] = { name: t.desc, txs: [] };
+    groups[key].txs.push(t);
   });
 
   const suggestions = [];
-  Object.entries(groups).forEach(([name, txs]) => {
+  Object.values(groups).forEach(({ name, txs }) => {
     if (txs.length < 2) return;
     txs.sort((a, b) => a.date - b.date);
 
@@ -873,10 +899,10 @@ function detectSubscriptions(transactions) {
     const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
 
     let cycle = null;
-    if (avg >= 6 && avg <= 8) cycle = 'weekly';
-    else if (avg >= 26 && avg <= 35) cycle = 'monthly';
-    else if (avg >= 83 && avg <= 97) cycle = 'quarterly';
-    else if (avg >= 350 && avg <= 380) cycle = 'annual';
+    if (avg >= 5  && avg <= 10)  cycle = 'weekly';
+    else if (avg >= 20 && avg <= 40)  cycle = 'monthly';
+    else if (avg >= 80 && avg <= 100) cycle = 'quarterly';
+    else if (avg >= 340 && avg <= 390) cycle = 'annual';
     if (!cycle) return;
 
     const price = txs[txs.length - 1].amount;
