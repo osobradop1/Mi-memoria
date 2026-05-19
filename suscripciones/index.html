@@ -744,6 +744,12 @@ function guessSubMeta(name) {
   return { icon:'📦', cat:'otros', color:'#6366f1' };
 }
 
+function normalizeHeader(s) {
+  return s.toLowerCase()
+    .replace(/á/g,'a').replace(/é/g,'e').replace(/í/g,'i').replace(/ó/g,'o').replace(/ú/g,'u').replace(/ñ/g,'n')
+    .replace(/[^a-z0-9]/g,'');
+}
+
 function parseCSVLine(line) {
   const result = [];
   let cur = '', inQ = false;
@@ -791,22 +797,20 @@ function parseRevolutRows(rows) {
   if (!rows.length) return [];
   const keys = Object.keys(rows[0]);
 
-  const findKey = (...terms) => keys.find(k =>
-    terms.some(t => k.toLowerCase().replace(/\s+/g,'').includes(t.toLowerCase().replace(/\s+/g,'')))
-  );
+  const findKey = (...terms) => keys.find(k => terms.some(t => normalizeHeader(k).includes(normalizeHeader(t))));
 
-  const amountKey  = findKey('amount');
-  const descKey    = findKey('description');
-  const dateKey    = findKey('completeddate') || findKey('date');
-  const typeKey    = findKey('type');
-  const stateKey   = findKey('state');
+  const amountKey  = findKey('importe', 'amount');
+  const descKey    = findKey('descripcion', 'description');
+  const dateKey    = findKey('fechadefinalizacion', 'completeddate');
+  const typeKey    = findKey('tipo', 'type');
+  const stateKey   = findKey('state', 'estado');
 
-  const SKIP_TYPES = ['TOPUP','TRANSFER','EXCHANGE','ATM','REFUND','CASHBACK','REWARD'];
+  const PAYMENT_TYPES = ['pagocontarjeta', 'cardpayment', 'card_payment'];
 
   const transactions = [];
   rows.forEach(row => {
-    const type  = String(row[typeKey] || '').toUpperCase();
-    if (SKIP_TYPES.some(t => type.includes(t))) return;
+    const type = normalizeHeader(String(row[typeKey] || ''));
+    if (typeKey && !PAYMENT_TYPES.some(t => type.includes(t))) return;
 
     const desc = String(row[descKey] || '').trim();
     if (!desc) return;
@@ -835,37 +839,43 @@ function parseRevolutCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
 
+  // Normalize headers removing accents and spaces (handles ES and EN Revolut exports)
   const rawHeader = parseCSVLine(lines[0]);
-  const header = rawHeader.map(h => h.trim().toLowerCase().replace(/"/g,'').replace(/\s+/g,''));
+  const header = rawHeader.map(h => normalizeHeader(h.replace(/"/g,'')));
 
-  const findIdx = (...terms) => header.findIndex(h => terms.some(t => h.includes(t.toLowerCase().replace(/\s+/g,''))));
+  const findIdx = (...terms) => header.findIndex(h => terms.some(t => h.includes(normalizeHeader(t))));
 
   const idx = {
-    type:   findIdx('type'),
-    desc:   findIdx('description'),
-    amount: findIdx('amount'),
-    date:   findIdx('completeddate', 'date'),
-    state:  findIdx('state'),
+    type:   findIdx('tipo', 'type'),
+    desc:   findIdx('descripcion', 'description'),
+    amount: findIdx('importe', 'amount'),
+    date:   findIdx('fechadefinalizacion', 'completeddate'),
+    state:  findIdx('state', 'estado'),
   };
 
-  const SKIP_TYPES = ['TOPUP','TRANSFER','EXCHANGE','ATM','REFUND','CASHBACK','REWARD'];
+  // Whitelist: only card payments (handles Spanish and English Revolut)
+  const PAYMENT_TYPES = ['pagocontarjeta', 'cardpayment', 'card_payment'];
 
   const transactions = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCSVLine(lines[i]);
     if (cols.length < 3) continue;
 
-    const type  = idx.type >= 0  ? cols[idx.type]?.trim().toUpperCase()  : '';
-    if (SKIP_TYPES.some(t => type.includes(t))) continue;
+    // Filter by type: only keep card payments
+    if (idx.type >= 0) {
+      const type = normalizeHeader(cols[idx.type] || '');
+      if (!PAYMENT_TYPES.some(t => type.includes(t))) continue;
+    }
 
-    const desc  = idx.desc >= 0  ? cols[idx.desc]?.trim()                : '';
+    const desc = idx.desc >= 0 ? cols[idx.desc]?.trim().replace(/^"|"$/g,'') : '';
     if (!desc) continue;
 
-    const amountRaw = (idx.amount >= 0 ? cols[idx.amount] : '0').replace(',','.').replace(/[^0-9.\-]/g,'');
+    const amountRaw = (idx.amount >= 0 ? cols[idx.amount] : '0').replace(/"/g,'').replace(',','.').replace(/[^0-9.\-]/g,'');
     const amount = parseFloat(amountRaw);
     if (isNaN(amount) || amount === 0) continue;
 
-    const dateStr = idx.date >= 0 ? cols[idx.date]?.trim() : '';
+    // Use the completion/finalization date
+    const dateStr = idx.date >= 0 ? cols[idx.date]?.trim().replace(/"/g,'') : '';
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) continue;
 
