@@ -121,7 +121,7 @@ async function main() {
   wc.getRow(4).height=14;
   cfgRow(K.BRUTO,   'Salario Convenio mensual',       2063.39, EURO, '← salario fijo mensual');
   cfgRow(K.BDIA,    'Bruto por día (días fuera)',      64.208,  EURO, '← precio diario al estar fuera');
-  cfgRow(K.PRO,     'Prorrata Pagas Extra (base SS)',  0,       EURO, '← 0 si no aparece en tu nómina; pon el valor si aparece en base de cotización (ej: 419,61)');
+  cfgRow(K.PRO,     'Prorrata Pagas Extra (base SS)',  419.61,  EURO, '← aparece en la base CC de tu nómina (Base CC 3.207,47 = sujeto CC + 419,61). La paga extra se cobra por separado en jun/dic, pero este importe suma a la base de cotización cada mes.');
   cfgRow(K.ACTD,    'Plus Actividad (por defecto)',    18.04,   EURO, '← valor que aparece normalmente; editable mes a mes en la hoja principal');
   wc.getRow(K.PRO).height=28;
 
@@ -212,7 +212,8 @@ async function main() {
     fnt(hc,{b:true,sz:9,col:C.blanco}); fillCell(hc, isPE ? C.peDark : C.moradoDark); aln(hc,{h:'center',v:'middle'});
     // IRPF row
     const ic=ws.getCell(R.IRPF,col);
-    ic.value = (idx===0) ? 0.1815 : {formula:`${CF(K.IRPF)}`};
+    // Enero=18.11%, Febrero=18.15% (datos reales nómina), resto=config
+    ic.value = (idx===0) ? 0.1811 : (idx===1) ? 0.1815 : {formula:`${CF(K.IRPF)}`};
     ic.numFmt=PCT; fnt(ic,{b:true,col:C.moradoDark}); fillCell(ic,C.am); brd(ic,C.amB); aln(ic);
   }
   // Total col headers
@@ -273,21 +274,24 @@ async function main() {
     (i,col) => CF(K.BRUTO), {fg:C.text, bg:C.gris});
   dataRow(R.ACT,  'Plus Actividad €',          'SUJETO-CC',  'input',
     (i) => i===0 ? {formula:CF(K.ACTD)} : {formula:CF(K.ACTD)});
+  // Febrero (idx=1): valores exactos de la nómina PDF
+  // Feb: Plus baja temp 261.12, H.Desp 216.47, H.Desp.Fest 228.24, H.Extra 474.48
   dataRow(R.TUR,  'Turnicidad €',              'SUJETO-CC',  'input', 0);
   dataRow(R.NOC,  'Nocturnidad €',             'SUJETO-CC',  'input', 0);
-  dataRow(R.FRI,  'Plus frío / baja temp. €',  'SUJETO-CC',  'input', 0);
+  dataRow(R.FRI,  'Plus frío / baja temp. €',  'SUJETO-CC',  'input', (i)=>i===1?261.12:0);
   dataRow(R.DIS,  'H. Disponibilidad €',       'SUJETO-CC',  'input', 0);
   dataRow(R.DIF,  'H. Disp. Festiva €',        'SUJETO-CC',  'input', 0);
-  dataRow(R.DES,  'H. Desplazamiento €',       'CC + 7p',    'input', 0, {tagColor:C.narDark});
-  dataRow(R.DESF, 'H. Desp. Festivo €',        'CC + 7p',    'input', 0, {tagColor:C.narDark});
+  dataRow(R.DES,  'H. Desplazamiento €',       'CC + 7p',    'input', (i)=>i===1?216.47:0, {tagColor:C.narDark});
+  dataRow(R.DESF, 'H. Desp. Festivo €',        'CC + 7p',    'input', (i)=>i===1?228.24:0, {tagColor:C.narDark});
   dataRow(R.DIAF, 'Días fuera €',              'CC + 7p',    'input', 0, {tagColor:C.narDark});
-  dataRow(R.HEX,  'H. Extra Normal €',         'HHEE + 7p',  'input', 0, {tagColor:C.morado});
+  dataRow(R.HEX,  'H. Extra Normal €',         'HHEE + 7p',  'input', (i)=>i===1?474.48:0, {tagColor:C.morado});
   dataRow(R.HEXF, 'H. Extra Festiva €',        'HHEE',       'input', 0, {tagColor:C.morado});
   divRow(ws, R.DIV2, C.borde, 2);
 
   // ── EXENTOS ─────────────────────────────────────────────────────────────
   secRow(ws, R.SEC_EX, '🟢  EXENTOS — No cotizan SS ni retienen IRPF', C.verde);
-  dataRow(R.DIETA, 'Dieta €',   'EXENTO', 'input', 0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
+  // Feb: Dieta 764.16€ (exento)
+  dataRow(R.DIETA, 'Dieta €',   'EXENTO', 'input', (i)=>i===1?764.16:0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
   dataRow(R.TIQ,   'Tiquets €', 'EXENTO', 'input', 0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
   dataRow(R.KM,    'KM €',      'EXENTO', 'input', 0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
   divRow(ws, R.DIV3, C.borde, 2);
