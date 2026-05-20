@@ -1,726 +1,419 @@
-/**
- * Calculadora de Nómina v3 — SS multi-base + Artículo 7p IRPF
- *
- * SS real (MECALUX):
- *   Base CC  = sujeto_sin_HHEE + prorrata_pagas_extra (puede ser 0)
- *   Base AT  = Base CC + HHEE
- *   SS CC (4.70%)          → Base CC × 4.70%
- *   SS Desempleo+FP (1.65%)→ Base AT × 1.65%
- *   SS HH.EE. (4.70%)      → HHEE × 4.70%
- *   SS MEI (0.13%)         → Base AT × 0.13%
- *
- *   IRPF = Bruto Sujeto × IRPF%
- *   NETO = (Bruto Sujeto + Exentos) − Total SS − IRPF
- *
- * Artículo 7p LIRPF:
- *   Los rendimientos del trabajo percibidos por trabajos realizados en el
- *   extranjero están exentos de IRPF hasta 60.100€/año si:
- *     - El trabajo se realiza físicamente fuera de España
- *     - El país destino tiene IRPF (no paraíso fiscal)
- *   Renta 7p = proporción salario días fuera + plus desplazamiento
- *            + plus desplazamiento festivo + pago días fuera (bruto/día)
- *   El IRPF retenido sobre renta 7p puede reclamarse en la Declaración de la Renta
- */
-
 const ExcelJS = require('/home/user/Mi-memoria/node_modules/exceljs');
 
 async function main() {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Mi Memoria — Calculadora v3';
-  wb.created = new Date();
 
   const C = {
-    moradoDark:  '4338CA', morado: '6366F1', moradoLight: 'EDE9FE',
-    verde:       '059669', verdeLight: 'D1FAE5',
-    rojo:        'DC2626', rojoLight: 'FEE2E2',
-    amarillo:    'FFFBEB', amarilloB: 'F59E0B',
-    naranja:     'FFF7ED', naranjaB: 'EA580C', naranjaDark: '7C2D12',
-    gris:        'F8FAFC', grisBorde: 'E2E8F0',
-    azulLight:   'EFF6FF', azul: '1D4ED8',
-    text:        '0F172A', muted: '64748B', blanco: 'FFFFFF',
-    rojoSuave:   'B91C1C', verdeSuave: '065F46',
+    moradoDark:'4338CA', morado:'6366F1', moradoLight:'EDE9FE',
+    verde:'059669', verdeLight:'D1FAE5',
+    rojo:'DC2626', rojoLight:'FEE2E2',
+    am:'FFFBEB', amB:'F59E0B', amDark:'92400E',
+    nar:'FFF7ED', narB:'EA580C', narDark:'7C2D12',
+    gris:'F8FAFC', borde:'E2E8F0',
+    text:'0F172A', muted:'64748B', blanco:'FFFFFF',
+    rs:'B91C1C', vs:'065F46',
+    peLight:'FEFCE8', peDark:'713F12',
   };
 
-  const ws = wb.addWorksheet('Calculadora Nómina 2026', {
-    pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1 },
-    properties: { tabColor: { argb: C.moradoDark } },
-  });
+  const EURO='#,##0.00 "€"', PCT='0.00%', NUM='#,##0.00';
+  const MONTHS=['Enero','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const DIAS=[31,28,31,30,31,30,31,31,30,31,30,31];
+  const CL = n => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[n-1];
 
-  ws.getColumn('A').width = 2;   // margen
-  ws.getColumn('B').width = 35;  // concepto
-  ws.getColumn('C').width = 13;  // cantidad
-  ws.getColumn('D').width = 13;  // precio
-  ws.getColumn('E').width = 16;  // total
-  ws.getColumn('F').width = 12;  // tipo / IRPF
+  // Column indices
+  const CB=2, CC=3, CJ=4, CD=15, CT=16; // B=label, C=tag, D..O=months, P=total
 
-  const EURO = '#,##0.00 "€"';
-  const PCT  = '0.00%';
-  const NUM  = '#,##0.00';
+  // Main sheet row numbers
+  const R = {
+    TITLE:1, DIV0:2,
+    HEADER:3, IRPF:4, DIV1:5,
+    SEC_DEV:6,
+    SAL:7, ACT:8, TUR:9, NOC:10, FRI:11, DIS:12, DIF:13,
+    DES:14, DESF:15, DIAF:16, HEX:17, HEXF:18, DIV2:19,
+    SEC_EX:20,
+    DIETA:21, TIQ:22, KM:23, DIV3:24,
+    SEC_PE:25,
+    PE:26, DIV4:27,
+    SEC_TOT:28,
+    BS:29, HHEE:30, EX:31, DIV5:32,
+    SEC_SS:33,
+    BCC:34, BAT:35, SCC:36, SDES:37, SHH:38, SMEI:39, STOT:40, DIV6:41,
+    SEC_PE2:42,
+    PESS:43, PEIRPF:44, PENET:45, DIV7:46,
+    IRPFD:47, NETO:48, NETOT:49, SP1:50,
+    SEC7P:51,
+    D7P:52, PROP7P:53, TOT7P:54, IRPF7P:55, SP2:56,
+    RES7P:57, SUM7P:58, LIM7P:59, REST7P:60, IRPF7PTOT:61,
+    SP3:62, NOTE:63,
+  };
 
-  const R = (row, col) => ws.getCell(row, col);
+  // Config sheet row numbers
+  const K = {
+    BRUTO:5, BDIA:6, PRO:7, ACTD:8,
+    SSCC:12, SSDES:13, SSHH:14, SSMEI:15,
+    IRPF:18,
+    PTUR:22, PNOC:23, PFRI:24, PDIS:25, PDIF:26,
+    PDES:27, PDESF:28, PHEX:29, PHEXF:30, PDIAF:31, PKM:32,
+  };
+  const CF = row => `Configuración!$C$${row}`;
 
-  function fill(c, argb) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }; }
-  function brd(c, color = C.grisBorde, style = 'thin') {
-    const s = { style, color: { argb: color } };
-    c.border = { top: s, bottom: s, left: s, right: s };
-  }
-  function fnt(c, { bold=false, size=10, color=C.text, italic=false } = {}) {
-    c.font = { bold, size, color: { argb: color }, italic, name: 'Calibri' };
-  }
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function fillCell(c, argb) { c.fill={type:'pattern',pattern:'solid',fgColor:{argb}}; }
+  function brd(c, col=C.borde) { const s={style:'thin',color:{argb:col}}; c.border={top:s,bottom:s,left:s,right:s}; }
+  function fnt(c,{b=false,sz=10,col=C.text,it=false}={}) { c.font={bold:b,size:sz,color:{argb:col},italic:it,name:'Calibri'}; }
+  function aln(c,{h='right',v='middle',ind=0,wrap=false}={}) { c.alignment={horizontal:h,vertical:v,indent:ind,wrapText:wrap}; }
 
-  function secHeader(row, text, bg=C.moradoDark, fg=C.blanco, sz=11) {
-    ws.mergeCells(row, 1, row, 6);
-    const c = R(row, 1);
-    c.value = text; fnt(c, { bold: true, size: sz, color: fg });
-    fill(c, bg); c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    ws.getRow(row).height = 24;
+  function inputC(c, val, fmt=EURO) {
+    c.value=val; c.numFmt=fmt;
+    fnt(c,{b:true,col:C.moradoDark}); fillCell(c,C.am); brd(c,C.amB); aln(c);
   }
-  function spacer(row, bg=C.gris, h=5) {
-    ws.mergeCells(row, 1, row, 6); fill(R(row, 1), bg); ws.getRow(row).height = h;
+  function frmC(c, formula, fmt=EURO, bg=C.gris, fg=C.text, bold=false) {
+    c.value={formula}; c.numFmt=fmt;
+    fnt(c,{b:bold,col:fg}); fillCell(c,bg); brd(c); aln(c);
   }
-  function divider(row) {
-    ws.mergeCells(row, 1, row, 6); fill(R(row, 1), C.grisBorde); ws.getRow(row).height = 3;
-  }
-
-  function inputCell(row, col, value, fmt=EURO) {
-    const c = R(row, col);
-    c.value = value; c.numFmt = fmt;
-    fnt(c, { bold: true, color: C.moradoDark });
-    fill(c, C.amarillo); brd(c, C.amarilloB);
-    c.alignment = { vertical: 'middle', horizontal: 'right' };
-    return c;
-  }
-  function frmCell(row, col, formula, fmt=EURO, bg=C.gris, fg=C.text) {
-    const c = R(row, col);
-    c.value = { formula }; c.numFmt = fmt;
-    fnt(c, { bold: true, color: fg });
-    fill(c, bg); brd(c, C.grisBorde);
-    c.alignment = { vertical: 'middle', horizontal: 'right' };
-    return c;
-  }
-  function lbl(row, text, opts={}) {
-    const c = R(row, 2);
-    c.value = text;
-    fnt(c, { size: 10, color: opts.color||C.text, bold: opts.bold||false, italic: opts.italic||false });
-    c.alignment = { vertical: 'middle', indent: opts.indent||1 };
-    if (opts.bg) fill(c, opts.bg);
-    return c;
-  }
-  function blockRow(row, label, formula, fmt=EURO, bg=C.gris, fg=C.text, sz=10, bold=false) {
-    ws.mergeCells(row, 1, row, 4);
-    const lc = R(row, 1); lc.value = label;
-    fnt(lc, { bold, size: sz, color: fg }); fill(lc, bg);
-    lc.alignment = { vertical: 'middle', horizontal: 'left', indent: 2 };
-    if (formula) {
-      const fc = R(row, 5);
-      fc.value = { formula }; fc.numFmt = fmt;
-      fnt(fc, { bold, size: sz, color: fg });
-      fill(fc, bg); brd(fc, C.grisBorde);
-      fc.alignment = { vertical: 'middle', horizontal: 'right' };
-    }
-    ws.getRow(row).height = 20;
-  }
-  // Bloque 3 col: merge A-C label | D fórmula/tasa | E importe
-  function ssRow(row, label, rateFormula, amtFormula, bg=C.rojoLight, fg=C.rojo) {
-    ws.mergeCells(row, 1, row, 3);
-    const lc = R(row, 1); lc.value = label;
-    fnt(lc, { size: 10, color: fg }); fill(lc, bg);
-    lc.alignment = { vertical: 'middle', horizontal: 'left', indent: 3 };
-    frmCell(row, 4, rateFormula, PCT, bg, fg);
-    frmCell(row, 5, amtFormula,  EURO, bg, fg);
-    ws.getRow(row).height = 20;
-  }
-  // Bloque naranja para Art. 7p
-  function artRow(row, label, formula, fmt=EURO) {
-    ws.mergeCells(row, 1, row, 4);
-    const lc = R(row, 1); lc.value = label;
-    fnt(lc, { size: 9, color: C.naranjaDark }); fill(lc, C.naranja);
-    lc.alignment = { vertical: 'middle', horizontal: 'left', indent: 3 };
-    if (formula) {
-      const fc = R(row, 5);
-      fc.value = { formula }; fc.numFmt = fmt;
-      fnt(fc, { size: 9, color: C.naranjaDark });
-      fill(fc, C.naranja); brd(fc, C.grisBorde);
-      fc.alignment = { vertical: 'middle', horizontal: 'right' };
-    }
-    ws.getRow(row).height = 18;
+  function lblC(c, text, {b=false,sz=10,col=C.text,it=false,bg=null,h='left',ind=1}={}) {
+    c.value=text; fnt(c,{b,sz,col,it}); aln(c,{h,v:'middle',ind});
+    if(bg) fillCell(c,bg);
   }
 
-  let r = 1;
+  // Merge A-P and style as section header
+  function secRow(ws, row, text, bg, fg=C.blanco, sz=10) {
+    ws.mergeCells(row,1,row,CT);
+    const c=ws.getCell(row,1); c.value=text;
+    fnt(c,{b:true,sz,col:fg}); fillCell(c,bg); aln(c,{h:'left',v:'middle',ind:1});
+    ws.getRow(row).height=20;
+  }
+  function divRow(ws, row, bg=C.borde, h=3) {
+    ws.mergeCells(row,1,row,CT); fillCell(ws.getCell(row,1),bg); ws.getRow(row).height=h;
+  }
+  function sumFrm(row) { return `SUM(${CL(CJ)}${row}:${CL(CD)}${row})`; }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // TÍTULO
+  // SHEET 1: Configuración
   // ══════════════════════════════════════════════════════════════════════════
-  ws.mergeCells(r, 1, r, 6);
-  { const c = R(r, 1); c.value = 'CALCULADORA NÓMINA 2026 — v3';
-    fnt(c, { bold: true, size: 18, color: C.blanco });
-    fill(c, C.moradoDark);
-    c.alignment = { vertical: 'middle', horizontal: 'center' };
-    ws.getRow(r).height = 42; } r++;
+  const wc = wb.addWorksheet('Configuración', {properties:{tabColor:{argb:C.morado}}});
+  wc.getColumn(1).width=2; wc.getColumn(2).width=32;
+  wc.getColumn(3).width=14; wc.getColumn(4).width=44;
 
-  ws.mergeCells(r, 1, r, 6);
-  { const c = R(r, 1);
-    c.value = 'SS en bases separadas (Base CC y Base AT)  |  Artículo 7p: renta trabajos en extranjero potencialmente exenta de IRPF hasta 60.100€/año';
-    fnt(c, { size: 9, italic: true, color: '78350F' });
-    fill(c, C.amarillo); c.alignment = { vertical: 'middle', horizontal: 'center' };
-    ws.getRow(r).height = 18; } r++;
-  spacer(r, C.gris, 8); r++;
+  function cfgSec(row, text) {
+    wc.mergeCells(row,1,row,4);
+    const c=wc.getCell(row,1); c.value=text;
+    fnt(c,{b:true,sz:10,col:C.blanco}); fillCell(c,C.moradoDark); aln(c,{h:'left',v:'middle',ind:1});
+    wc.getRow(row).height=20;
+  }
+  function cfgRow(row, label, value, fmt, note) {
+    lblC(wc.getCell(row,2), label, {ind:1});
+    const vc=wc.getCell(row,3);
+    vc.value=value; vc.numFmt=fmt||EURO;
+    fnt(vc,{b:true,col:C.moradoDark}); fillCell(vc,C.am); brd(vc,C.amB); aln(vc);
+    if(note){ const nc=wc.getCell(row,4); nc.value=note; fnt(nc,{sz:9,it:true,col:C.muted}); aln(nc,{h:'left',ind:1}); }
+    wc.getRow(row).height=20;
+  }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // CONFIGURACIÓN
-  // ══════════════════════════════════════════════════════════════════════════
-  secHeader(r, '⚙️   CONFIGURACIÓN — Celdas amarillas = editables'); r++;
-  ['', 'Parámetro', 'Valor', '', '', ''].forEach((t, i) => {
-    const c = R(r, i+1); c.value = t;
-    fnt(c, { bold: true, size: 9, color: C.muted }); c.alignment = { horizontal: 'center' };
-  });
-  ws.getRow(r).height = 16; r++;
+  wc.mergeCells(1,1,1,4);
+  { const c=wc.getCell(1,1); c.value='⚙️  CONFIGURACIÓN — Nómina 2026';
+    fnt(c,{b:true,sz:14,col:C.blanco}); fillCell(c,C.moradoDark); aln(c,{h:'center',v:'middle'}); wc.getRow(1).height=32; }
+  wc.mergeCells(2,1,2,4); fillCell(wc.getCell(2,1),C.gris); wc.getRow(2).height=6;
 
-  // Salario
-  const ROW_BRUTO = r;
-  lbl(r, 'Salario Convenio mensual', { bold: true });
-  inputCell(r, 3, 2063.39, EURO);
-  ws.mergeCells(r, 4, r, 6);
-  { const c = R(r, 4); c.value = '← salario base fijo mensual';
-    fnt(c, { size: 9, italic: true, color: C.muted }); c.alignment = { indent: 1 }; }
-  ws.getRow(r).height = 20; r++;
+  cfgSec(3, '💰  Salario y bases');
+  [2,3,4].forEach(c=>{ const cc=wc.getCell(4,c); cc.value=['','Parámetro','Valor','Nota'][c];
+    fnt(cc,{b:true,sz:9,col:C.muted}); });
+  wc.getRow(4).height=14;
+  cfgRow(K.BRUTO,   'Salario Convenio mensual',       2063.39, EURO, '← salario fijo mensual');
+  cfgRow(K.BDIA,    'Bruto por día (días fuera)',      64.208,  EURO, '← precio diario al estar fuera');
+  cfgRow(K.PRO,     'Prorrata Pagas Extra (base SS)',  0,       EURO, '← 0 si no aparece en tu nómina; pon el valor si aparece en base de cotización (ej: 419,61)');
+  cfgRow(K.ACTD,    'Plus Actividad (por defecto)',    18.04,   EURO, '← valor que aparece normalmente; editable mes a mes en la hoja principal');
+  wc.getRow(K.PRO).height=28;
 
-  const ROW_BRUTO_DIA = r;
-  lbl(r, 'Bruto por día (días fuera)');
-  inputCell(r, 3, 64.208, EURO);
-  ws.getRow(r).height = 20; r++;
+  wc.mergeCells(9,1,9,4); fillCell(wc.getCell(9,1),C.gris); wc.getRow(9).height=6;
+  cfgSec(10, '🔴  SS — Tasas trabajador');
+  [2,3,4].forEach(c=>{ const cc=wc.getCell(11,c); cc.value=['','Concepto','Tasa','Base de cálculo'][c];
+    fnt(cc,{b:true,sz:9,col:C.muted}); }); wc.getRow(11).height=14;
+  cfgRow(K.SSCC,  'CC Contingencias Comunes', 0.047,  PCT, 'Base CC = sujeto sin HHEE + prorrata');
+  cfgRow(K.SSDES, 'Desempleo + FP',           0.0165, PCT, 'Base AT = Base CC + HHEE');
+  cfgRow(K.SSHH,  'HH.EE. Normales',          0.047,  PCT, 'Solo total horas extra');
+  cfgRow(K.SSMEI, 'MEI',                       0.0013, PCT, 'Base AT (tasa real ≈ 0.1307%)');
 
-  spacer(r, C.moradoLight, 4); r++;
+  wc.mergeCells(16,1,16,4); fillCell(wc.getCell(16,1),C.gris); wc.getRow(16).height=6;
+  cfgSec(17, '📊  IRPF');
+  cfgRow(K.IRPF,  'IRPF por defecto (%)',      0.1815, PCT, '← editable mes a mes en la hoja principal (fila IRPF %)');
 
-  // Prorrata + Plus Actividad
-  lbl(r, 'PRORRATA Y PLUSES BASE', { bold: true, color: C.moradoDark });
-  ws.getRow(r).height = 18; r++;
-
-  const ROW_PRORRATA = r;
-  lbl(r, '  Prorrata Pagas Extra en base SS', { indent: 2 });
-  inputCell(r, 3, 0, EURO);
-  ws.mergeCells(r, 4, r, 6);
-  { const c = R(r, 4);
-    c.value = '← solo suma a Base CC/AT para SS; NO se cobra mensualmente. Si aparece en tu nómina, ponla (ej: 419,61€)';
-    fnt(c, { size: 9, italic: true, color: C.muted }); c.alignment = { indent: 1, wrapText: true }; }
-  ws.getRow(r).height = 28; r++;
-
-  const ROW_PLUS_ACT_DEF = r;
-  lbl(r, '  Plus Actividad por defecto', { indent: 2 });
-  inputCell(r, 3, 18.04, EURO);
-  ws.mergeCells(r, 4, r, 6);
-  { const c = R(r, 4); c.value = '← editable mes a mes en cada bloque';
-    fnt(c, { size: 9, italic: true, color: C.muted }); c.alignment = { indent: 1 }; }
-  ws.getRow(r).height = 20; r++;
-
-  spacer(r, C.moradoLight, 4); r++;
-
-  // SS Tasas
-  lbl(r, 'SEGURIDAD SOCIAL — Tasas trabajador', { bold: true, color: C.moradoDark });
-  ws.getRow(r).height = 18; r++;
-  ['', 'Concepto SS', 'Tasa (%)', 'Base de cálculo', '', ''].forEach((t, i) => {
-    const c = R(r, i+1); c.value = t;
-    fnt(c, { bold: true, size: 9, color: C.blanco }); fill(c, C.morado);
-    c.alignment = { horizontal: i>=2?'center':'left', vertical: 'middle', indent: i===1?1:0 };
-  });
-  ws.getRow(r).height = 16; r++;
-
-  const ssRates = [
-    ['CC (Contingencias Comunes)',  'SS_CC',  0.0470, 'Base CC = sujeto sin HHEE + prorrata'],
-    ['Desempleo + FP',              'SS_DES', 0.0165, 'Base AT = Base CC + HHEE'],
-    ['HH.EE. Normales',            'SS_HH',  0.0470, 'Solo importe total Horas Extra'],
-    ['MEI',                        'SS_MEI', 0.0013, 'Base AT (tasa exacta ≈ 0.1307%)'],
-  ];
-  const SS_RATE_ROWS = {};
-  ssRates.forEach(([name, key, val, nota]) => {
-    SS_RATE_ROWS[key] = r;
-    lbl(r, '  ' + name, { indent: 2 });
-    inputCell(r, 3, val, PCT);
-    ws.mergeCells(r, 4, r, 6);
-    { const c = R(r, 4); c.value = nota;
-      fnt(c, { size: 9, italic: true, color: C.muted }); c.alignment = { indent: 1 }; }
-    ws.getRow(r).height = 18; r++;
-  });
-
-  spacer(r, C.moradoLight, 4); r++;
-
-  // IRPF
-  const ROW_IRPF_DEFAULT = r;
-  lbl(r, 'IRPF por defecto (%)', { bold: true, color: C.moradoDark });
-  inputCell(r, 3, 0.1815, PCT);
-  ws.mergeCells(r, 4, r, 6);
-  { const c = R(r, 4); c.value = '← 18.15% según nómina feb. Editable en col F de cada mes';
-    fnt(c, { size: 9, italic: true, color: C.muted }); c.alignment = { indent: 1 }; }
-  ws.getRow(r).height = 20; r++;
-
-  spacer(r, C.moradoLight, 4); r++;
-
-  // Precios unitarios
-  lbl(r, 'PRECIOS UNITARIOS DE VARIABLES', { bold: true, color: C.moradoDark });
-  ws.getRow(r).height = 18; r++;
-  ['', 'Concepto', 'Precio (€/unidad)', 'Tipo SS', '', ''].forEach((t, i) => {
-    const c = R(r, i+1); c.value = t;
-    fnt(c, { bold: true, size: 9, color: C.blanco }); fill(c, C.morado);
-    c.alignment = { horizontal: i>=2?'center':'left', vertical: 'middle', indent: i===1?1:0 };
-  });
-  ws.getRow(r).height = 16; r++;
-
-  const PRICE_ROWS = {};
+  wc.mergeCells(19,1,19,4); fillCell(wc.getCell(19,1),C.gris); wc.getRow(19).height=6;
+  cfgSec(20, '💶  Precios unitarios de variables (€/unidad o €/hora)');
+  [2,3,4].forEach(c=>{ const cc=wc.getCell(21,c); cc.value=['','Concepto','€/unidad','Tipo SS'][c];
+    fnt(cc,{b:true,sz:9,col:C.muted}); }); wc.getRow(21).height=14;
   [
-    ['Turnicidad',              'Turnicidad',   3.65,  'Base CC'],
-    ['Nocturnidad',             'Nocturnidad',  10.94, 'Base CC'],
-    ['Plus frío / baja temp.',  'PlusFrio',     16.32, 'Base CC'],
-    ['H. Disponibilidad',       'HDisp',        1.35,  'Base CC'],
-    ['H. Disponibilidad Fest.', 'HDispFest',    2.17,  'Base CC'],
-    ['H. Desplazamiento',       'HDesp',        10.56, 'Base CC + Art.7p'],
-    ['H. Desp. Festivo',        'HDespFest',    12.68, 'Base CC + Art.7p'],
-    ['H. Extra Normal',         'HExtra',       19.77, 'Base AT (HHEE)'],
-    ['H. Extra Festiva',        'HExtraFest',   19.77, 'Base AT (HHEE)'],
-    ['Días fuera (bruto/día)',  'DiasFuera',    null,  'Base CC + Art.7p'],
-    ['KM',                      'KM',           0.30,  'Exento'],
-  ].forEach(([name, key, val, tipoSS]) => {
-    PRICE_ROWS[key] = r;
-    lbl(r, '  ' + name, { indent: 2 });
-    if (key === 'DiasFuera') {
-      frmCell(r, 3, `C$${ROW_BRUTO_DIA}`, EURO, C.amarillo, C.moradoDark);
-      brd(R(r, 3), C.amarilloB);
-    } else {
-      inputCell(r, 3, val, EURO);
+    [K.PTUR,  'Turnicidad',             3.65,  'Base CC'],
+    [K.PNOC,  'Nocturnidad',            10.94, 'Base CC'],
+    [K.PFRI,  'Plus frío / baja temp.', 16.32, 'Base CC'],
+    [K.PDIS,  'H. Disponibilidad',      1.35,  'Base CC'],
+    [K.PDIF,  'H. Disp. Festiva',       2.17,  'Base CC'],
+    [K.PDES,  'H. Desplazamiento',      10.56, 'Base CC + Art.7p'],
+    [K.PDESF, 'H. Desp. Festivo',       12.68, 'Base CC + Art.7p'],
+    [K.PHEX,  'H. Extra Normal',        19.77, 'HHEE + Art.7p'],
+    [K.PHEXF, 'H. Extra Festiva',       19.77, 'HHEE'],
+    [K.PDIAF, 'Días fuera (bruto/día)', null,  'Base CC + Art.7p  ← = C6'],
+    [K.PKM,   'KM',                     0.30,  'Exento'],
+  ].forEach(([row, name, val, tipo]) => {
+    lblC(wc.getCell(row,2), name, {ind:1});
+    const vc=wc.getCell(row,3);
+    if(val===null){ vc.value={formula:`C${K.BDIA}`}; }
+    else { vc.value=val; }
+    vc.numFmt=EURO; fnt(vc,{b:true,col:C.moradoDark}); fillCell(vc,C.am); brd(vc,C.amB); aln(vc);
+    const tc=wc.getCell(row,4); tc.value=tipo; fnt(tc,{sz:9,col:C.muted}); aln(tc,{h:'left',ind:1});
+    wc.getRow(row).height=18;
+  });
+
+  wc.mergeCells(33,1,33,4); fillCell(wc.getCell(33,1),C.gris); wc.getRow(33).height=6;
+  wc.mergeCells(34,1,34,4);
+  { const c=wc.getCell(34,1);
+    c.value='🌍 Art.7p: Para calcular los importes de Turnicidad/Nocturnidad/Plus frío/etc. en €: multiplica el precio unitario × horas/unidades del mes y ponlo directamente en la celda amarilla de la hoja principal.';
+    fnt(c,{sz:9,it:true,col:C.amDark}); fillCell(c,C.am); aln(c,{h:'left',v:'middle',ind:1,wrap:true});
+    wc.getRow(34).height=36; }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHEET 2: Nómina 2026 (horizontal grid)
+  // ══════════════════════════════════════════════════════════════════════════
+  const ws = wb.addWorksheet('Nómina 2026', {
+    pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1},
+    properties:{tabColor:{argb:C.moradoDark}},
+  });
+
+  ws.getColumn(1).width=2; ws.getColumn(CB).width=26; ws.getColumn(CC).width=10;
+  for(let c=CJ;c<=CD;c++) ws.getColumn(c).width=10;
+  ws.getColumn(CT).width=13;
+
+  // ── TITLE ──────────────────────────────────────────────────────────────
+  ws.mergeCells(R.TITLE,1,R.TITLE,CT);
+  { const c=ws.getCell(R.TITLE,1); c.value='💰  CALCULADORA NÓMINA 2026';
+    fnt(c,{b:true,sz:16,col:C.blanco}); fillCell(c,C.moradoDark); aln(c,{h:'center',v:'middle'});
+    ws.getRow(R.TITLE).height=36; }
+  divRow(ws, R.DIV0, C.moradoLight, 4);
+
+  // ── MONTH HEADERS ──────────────────────────────────────────────────────
+  ws.getRow(R.HEADER).height=22;
+  ws.getRow(R.IRPF).height=20;
+  // col B: label
+  { const c=ws.getCell(R.HEADER,CB); c.value='MES';
+    fnt(c,{b:true,sz:10,col:C.blanco}); fillCell(c,C.moradoDark); aln(c,{h:'center',v:'middle'}); }
+  { const c=ws.getCell(R.IRPF,CB); c.value='IRPF %';
+    fnt(c,{b:true,sz:10,col:C.moradoDark}); fillCell(c,C.am); aln(c,{h:'left',v:'middle',ind:1}); }
+  // col C: type col header
+  { const c=ws.getCell(R.HEADER,CC); c.value='Tipo';
+    fnt(c,{b:true,sz:8,col:C.muted}); fillCell(c,C.gris); aln(c,{h:'center',v:'middle'}); }
+  { const c=ws.getCell(R.IRPF,CC); c.value='← editable';
+    fnt(c,{sz:8,it:true,col:C.muted}); aln(c,{h:'center',v:'middle'}); }
+
+  for(let col=CJ; col<=CD; col++) {
+    const idx=col-CJ;
+    const isPE = idx===5 || idx===11; // Jun, Dic
+    const mName = MONTHS[idx] + (isPE?' ⭐':'');
+    const hc=ws.getCell(R.HEADER,col); hc.value=mName;
+    fnt(hc,{b:true,sz:9,col:C.blanco}); fillCell(hc, isPE ? C.peDark : C.moradoDark); aln(hc,{h:'center',v:'middle'});
+    // IRPF row
+    const ic=ws.getCell(R.IRPF,col);
+    ic.value = (idx===0) ? 0.1815 : {formula:`${CF(K.IRPF)}`};
+    ic.numFmt=PCT; fnt(ic,{b:true,col:C.moradoDark}); fillCell(ic,C.am); brd(ic,C.amB); aln(ic);
+  }
+  // Total col headers
+  { const c=ws.getCell(R.HEADER,CT); c.value='TOTAL AÑO';
+    fnt(c,{b:true,sz:9,col:C.blanco}); fillCell(c,C.morado); aln(c,{h:'center',v:'middle'}); }
+  { const c=ws.getCell(R.IRPF,CT); c.value='↑ edita cada mes';
+    fnt(c,{sz:8,it:true,col:C.muted}); aln(c,{h:'center',v:'middle'}); }
+
+  divRow(ws, R.DIV1, C.borde, 3);
+
+  // ── Helper: fill one data row ────────────────────────────────────────────
+  // type: 'input'|'formula'|'cfgref'
+  // opts: { fmt, bg, fg, bold, tag, totalFrm }
+  function dataRow(row, label, tag, type, monthFn, opts={}) {
+    const {fmt=EURO, bg=C.gris, fg=C.text, bold=false, tagColor=C.muted, totalFrm=null} = opts;
+    ws.getRow(row).height = opts.h || 18;
+
+    // Label
+    const lc=ws.getCell(row,CB); lc.value=label;
+    fnt(lc,{sz:9,col:fg,b:bold}); if(opts.lbg) fillCell(lc,opts.lbg); else fillCell(lc,bg);
+    aln(lc,{h:'left',v:'middle',ind:1});
+
+    // Tag col
+    if(tag) {
+      const tc=ws.getCell(row,CC); tc.value=tag;
+      fnt(tc,{sz:8,col:tagColor}); fillCell(tc,bg); aln(tc,{h:'center',v:'middle'});
     }
-    const c = R(r, 4); c.value = tipoSS;
-    fnt(c, { size: 9, color: tipoSS.includes('Art.7p') ? C.naranjaDark : tipoSS==='Exento' ? C.verdeSuave : C.azul });
-    c.alignment = { horizontal: 'center', vertical: 'middle' };
-    ws.getRow(r).height = 18; r++;
-  });
 
-  spacer(r, C.gris, 10); r++;
+    // Month cols
+    for(let col=CJ; col<=CD; col++) {
+      const idx=col-CJ;
+      const c=ws.getCell(row,col);
+      if(type==='input') {
+        const def = typeof monthFn==='function' ? monthFn(idx,col) : monthFn;
+        inputC(c, def, fmt);
+      } else if(type==='formula') {
+        const frm = typeof monthFn==='function' ? monthFn(idx,col) : monthFn;
+        frmC(c, frm, fmt, bg, fg, bold);
+      }
+    }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 12 BLOQUES MENSUALES
-  // ══════════════════════════════════════════════════════════════════════════
-  const MESES    = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const DIAS_MES = [31,28,31,30,31,30,31,31,30,31,30,31];
+    // Total col
+    const tc=ws.getCell(row,CT);
+    const tfrm = totalFrm || (type==='input'||type==='formula' ? sumFrm(row) : null);
+    if(tfrm) {
+      tc.value={formula:tfrm}; tc.numFmt=fmt;
+      fnt(tc,{b:bold,col:bold?fg:C.muted}); fillCell(tc, bold?bg:C.gris); brd(tc); aln(tc);
+    }
+  }
 
-  const mesRefs = {};
+  // Shorthand for column letter of each month
+  const cl = col => CL(col);
 
-  MESES.forEach((mes, idx) => {
-    const diasN = DIAS_MES[idx];
+  // ── DEVENGOS ────────────────────────────────────────────────────────────
+  secRow(ws, R.SEC_DEV, '📋  DEVENGOS — Las celdas amarillas son editables. Introduce el importe en €.', C.morado);
 
-    // ── Cabecera de mes ─────────────────────────────────────────────────────
-    ws.mergeCells(r, 1, r, 4);
-    { const c = R(r, 1); c.value = `${mes.toUpperCase()} 2026`;
-      fnt(c, { bold: true, size: 12, color: C.blanco });
-      fill(c, C.moradoDark); c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }; }
-    { const c = R(r, 5); c.value = `Días: ${diasN}`;
-      fnt(c, { size: 10, color: C.blanco }); fill(c, C.moradoDark);
-      c.alignment = { vertical: 'middle', horizontal: 'center' }; }
-    const ROW_IRPF_MES = r;
-    { const c = R(r, 6);
-      c.value = idx === 0 ? 0.1815 : { formula: `$C$${ROW_IRPF_DEFAULT}` };
-      c.numFmt = PCT; fnt(c, { bold: true, size: 10, color: C.moradoDark });
-      fill(c, C.amarillo); brd(c, C.amarilloB);
-      c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    ws.getRow(r).height = 26; r++;
+  dataRow(R.SAL,  'Salario Convenio',          'SUJETO-CC',  'formula',
+    (i,col) => CF(K.BRUTO), {fg:C.text, bg:C.gris});
+  dataRow(R.ACT,  'Plus Actividad €',          'SUJETO-CC',  'input',
+    (i) => i===0 ? {formula:CF(K.ACTD)} : {formula:CF(K.ACTD)});
+  dataRow(R.TUR,  'Turnicidad €',              'SUJETO-CC',  'input', 0);
+  dataRow(R.NOC,  'Nocturnidad €',             'SUJETO-CC',  'input', 0);
+  dataRow(R.FRI,  'Plus frío / baja temp. €',  'SUJETO-CC',  'input', 0);
+  dataRow(R.DIS,  'H. Disponibilidad €',       'SUJETO-CC',  'input', 0);
+  dataRow(R.DIF,  'H. Disp. Festiva €',        'SUJETO-CC',  'input', 0);
+  dataRow(R.DES,  'H. Desplazamiento €',       'CC + 7p',    'input', 0, {tagColor:C.narDark});
+  dataRow(R.DESF, 'H. Desp. Festivo €',        'CC + 7p',    'input', 0, {tagColor:C.narDark});
+  dataRow(R.DIAF, 'Días fuera €',              'CC + 7p',    'input', 0, {tagColor:C.narDark});
+  dataRow(R.HEX,  'H. Extra Normal €',         'HHEE + 7p',  'input', 0, {tagColor:C.morado});
+  dataRow(R.HEXF, 'H. Extra Festiva €',        'HHEE',       'input', 0, {tagColor:C.morado});
+  divRow(ws, R.DIV2, C.borde, 2);
 
-    // Cabecera columnas
-    ['', 'CONCEPTO', 'CANTIDAD', '€/UNIDAD', 'TOTAL €', 'TIPO'].forEach((t, i) => {
-      const c = R(r, i+1); c.value = t;
-      fnt(c, { bold: true, size: 9, color: C.muted }); fill(c, C.gris);
-      c.alignment = { horizontal: i>=2?'center':'left', vertical: 'middle', indent: i===1?1:0 };
-    });
-    ws.getRow(r).height = 16; r++;
+  // ── EXENTOS ─────────────────────────────────────────────────────────────
+  secRow(ws, R.SEC_EX, '🟢  EXENTOS — No cotizan SS ni retienen IRPF', C.verde);
+  dataRow(R.DIETA, 'Dieta €',   'EXENTO', 'input', 0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
+  dataRow(R.TIQ,   'Tiquets €', 'EXENTO', 'input', 0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
+  dataRow(R.KM,    'KM €',      'EXENTO', 'input', 0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
+  divRow(ws, R.DIV3, C.borde, 2);
 
-    // ── Salario Convenio ────────────────────────────────────────────────────
-    const ROW_SAL_BASE = r;
-    lbl(r, 'Salario Convenio');
-    frmCell(r, 5, `C$${ROW_BRUTO}`, EURO, C.gris, C.text);
-    { const c = R(r, 6); c.value = 'SUJETO-CC';
-      fnt(c, { size: 9, bold: true, color: C.azul }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    ws.getRow(r).height = 18; r++;
+  // ── PAGA EXTRA ──────────────────────────────────────────────────────────
+  secRow(ws, R.SEC_PE, '⭐  PAGA EXTRA — Normalmente junio y diciembre. Pon el importe bruto en esos meses.', C.peDark);
+  dataRow(R.PE, 'Paga Extra € (importe bruto)', 'PAGA EXTRA', 'input', 0,
+    {bg:C.peLight, fg:C.peDark, tagColor:C.peDark, bold:false, h:20});
+  divRow(ws, R.DIV4, C.borde, 4);
 
-    // ── Plus Actividad (sujeto directo) ─────────────────────────────────────
-    const ROW_PLUS_ACT = r;
-    lbl(r, '  Plus Actividad', { indent: 2 });
-    { const c = R(r, 3); c.value = { formula: `C$${ROW_PLUS_ACT_DEF}` }; c.numFmt = EURO;
-      fnt(c, { bold: true, color: C.moradoDark }); fill(c, C.amarillo); brd(c, C.amarilloB);
-      c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    { const c = R(r, 4); c.value = '(directo)';
-      fnt(c, { italic: true, size: 9, color: C.muted }); c.alignment = { horizontal: 'center' }; }
-    frmCell(r, 5, `C${r}`, EURO, C.gris, C.text);
-    { const c = R(r, 6); c.value = 'SUJETO-CC';
-      fnt(c, { size: 9, bold: true, color: C.azul }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    ws.getRow(r).height = 18; r++;
+  // ── TOTALES ─────────────────────────────────────────────────────────────
+  secRow(ws, R.SEC_TOT, '🔢  TOTALES CALCULADOS', C.moradoDark);
+  dataRow(R.BS,   'Bruto Sujeto (base IRPF)',    'BASE IRPF',  'formula',
+    (i,col) => `${cl(col)}${R.SAL}+${cl(col)}${R.ACT}+${cl(col)}${R.TUR}+${cl(col)}${R.NOC}+${cl(col)}${R.FRI}+${cl(col)}${R.DIS}+${cl(col)}${R.DIF}+${cl(col)}${R.DES}+${cl(col)}${R.DESF}+${cl(col)}${R.DIAF}+${cl(col)}${R.HEX}+${cl(col)}${R.HEXF}`,
+    {bg:C.moradoLight, fg:C.moradoDark, bold:true});
+  dataRow(R.HHEE, 'Total Horas Extra (HHEE)',    'SS sep.',    'formula',
+    (i,col) => `${cl(col)}${R.HEX}+${cl(col)}${R.HEXF}`, {fg:C.morado});
+  dataRow(R.EX,   'Total Exentos',               'EXENTO',    'formula',
+    (i,col) => `${cl(col)}${R.DIETA}+${cl(col)}${R.TIQ}+${cl(col)}${R.KM}`,
+    {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
+  divRow(ws, R.DIV5, C.borde, 3);
 
-    // ── Variables sujetas Base CC ────────────────────────────────────────────
-    const varsSujetasCC = [
-      ['Turnicidad',             'Turnicidad',  false],
-      ['Nocturnidad',            'Nocturnidad', false],
-      ['Plus frío / baja temp.', 'PlusFrio',    false],
-      ['H. Disponibilidad',      'HDisp',       false],
-      ['H. Disponibilidad Fest.','HDispFest',   false],
-      ['H. Desplazamiento',      'HDesp',       true ],  // Art. 7p
-      ['H. Desp. Festivo',       'HDespFest',   true ],  // Art. 7p
-      ['Días fuera',             'DiasFuera',   true ],  // Art. 7p
-    ];
+  // ── SS ──────────────────────────────────────────────────────────────────
+  secRow(ws, R.SEC_SS, '🔴  COTIZACIÓN SEGURIDAD SOCIAL', C.rojo);
+  dataRow(R.BCC,  'Base CC = sujeto CC + prorrata', '',       'formula',
+    (i,col) => `${cl(col)}${R.BS}-${cl(col)}${R.HHEE}+${CF(K.PRO)}`,
+    {bg:C.rojoLight, fg:C.rs});
+  dataRow(R.BAT,  'Base AT = Base CC + HHEE',       '',       'formula',
+    (i,col) => `${cl(col)}${R.BCC}+${cl(col)}${R.HHEE}`,
+    {bg:C.rojoLight, fg:C.rs});
+  dataRow(R.SCC,  '(-) SS CC 4.70%',               '4.70%',  'formula',
+    (i,col) => `${cl(col)}${R.BCC}*${CF(K.SSCC)}`, {bg:C.rojoLight, fg:C.rojo, tagColor:C.rs});
+  dataRow(R.SDES, '(-) SS Desempleo+FP 1.65%',     '1.65%',  'formula',
+    (i,col) => `${cl(col)}${R.BAT}*${CF(K.SSDES)}`, {bg:C.rojoLight, fg:C.rojo, tagColor:C.rs});
+  dataRow(R.SHH,  '(-) SS HH.EE. 4.70%',           '4.70%',  'formula',
+    (i,col) => `${cl(col)}${R.HHEE}*${CF(K.SSHH)}`, {bg:C.rojoLight, fg:C.rojo, tagColor:C.rs});
+  dataRow(R.SMEI, '(-) SS MEI 0.13%',              '0.13%',  'formula',
+    (i,col) => `${cl(col)}${R.BAT}*${CF(K.SSMEI)}`, {bg:C.rojoLight, fg:C.rojo, tagColor:C.rs});
+  dataRow(R.STOT, 'TOTAL SS',                       '',       'formula',
+    (i,col) => `${cl(col)}${R.SCC}+${cl(col)}${R.SDES}+${cl(col)}${R.SHH}+${cl(col)}${R.SMEI}`,
+    {bg:C.rojo, fg:C.blanco, bold:true, h:22});
+  divRow(ws, R.DIV6, C.borde, 3);
 
-    const sujetasCCRows = [ROW_SAL_BASE, ROW_PLUS_ACT];
-    let ROW_H_DESP_VAR     = null;
-    let ROW_H_DESP_FEST_VAR = null;
-    let ROW_DIAS_FUERA_VAR  = null;
+  // ── SS + IRPF PAGA EXTRA ─────────────────────────────────────────────────
+  secRow(ws, R.SEC_PE2, '⭐  SS + IRPF — PAGA EXTRA', C.peDark);
+  dataRow(R.PESS,  'SS Paga Extra',    '', 'formula',
+    (i,col) => `${cl(col)}${R.PE}*(${CF(K.SSCC)}+${CF(K.SSDES)}+${CF(K.SSMEI)})`,
+    {bg:C.peLight, fg:C.peDark});
+  dataRow(R.PEIRPF,'IRPF Paga Extra', '', 'formula',
+    (i,col) => `${cl(col)}${R.PE}*${cl(col)}${R.IRPF}`,
+    {bg:C.peLight, fg:C.peDark});
+  dataRow(R.PENET, 'NETO Paga Extra', '', 'formula',
+    (i,col) => `${cl(col)}${R.PE}-${cl(col)}${R.PESS}-${cl(col)}${R.PEIRPF}`,
+    {bg:C.peLight, fg:C.peDark, bold:true, h:20});
+  divRow(ws, R.DIV7, C.borde, 4);
 
-    varsSujetasCC.forEach(([name, key, is7p]) => {
-      const thisRow = r;
-      lbl(r, '  ' + name, { indent: 2 });
-      inputCell(r, 3, 0, NUM);
-      frmCell(r, 4, `C$${PRICE_ROWS[key]}`, EURO, C.gris, C.muted);
-      frmCell(r, 5, `C${r}*D${r}`, EURO, C.gris, C.text);
-      { const c = R(r, 6); c.value = is7p ? 'CC+7p' : 'SUJETO-CC';
-        fnt(c, { size: 9, bold: true, color: is7p ? C.naranjaDark : C.azul });
-        c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-      sujetasCCRows.push(thisRow);
-      if (key === 'HDesp')     ROW_H_DESP_VAR     = thisRow;
-      if (key === 'HDespFest') ROW_H_DESP_FEST_VAR = thisRow;
-      if (key === 'DiasFuera') ROW_DIAS_FUERA_VAR  = thisRow;
-      ws.getRow(r).height = 18; r++;
-    });
+  // ── IRPF + NETO ──────────────────────────────────────────────────────────
+  dataRow(R.IRPFD, '(-) IRPF retenido mensual', '', 'formula',
+    (i,col) => `${cl(col)}${R.BS}*${cl(col)}${R.IRPF}`,
+    {bg:C.rojoLight, fg:C.rojo, h:20});
+  dataRow(R.NETO,  'NETO MENSUAL', '💳', 'formula',
+    (i,col) => `${cl(col)}${R.BS}+${cl(col)}${R.EX}-${cl(col)}${R.STOT}-${cl(col)}${R.IRPFD}`,
+    {bg:C.verde, fg:C.blanco, bold:true, h:26, tagColor:C.blanco});
+  dataRow(R.NETOT, 'NETO TOTAL (mensual + paga extra)', '💳+⭐', 'formula',
+    (i,col) => `${cl(col)}${R.NETO}+${cl(col)}${R.PENET}`,
+    {bg:C.verde, fg:C.blanco, bold:true, h:28, tagColor:C.blanco});
 
-    // ── HH.EE. (Base AT) ────────────────────────────────────────────────────
-    ws.mergeCells(r, 1, r, 6);
-    { const c = R(r, 1); c.value = '── HORAS EXTRA (cotizan en base AT separada) ───────────────────────────';
-      fnt(c, { size: 9, italic: true, bold: true, color: C.azul }); fill(c, C.azulLight);
-      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }; }
-    ws.getRow(r).height = 16; r++;
+  divRow(ws, R.SP1, C.gris, 8);
 
-    const hheeRows = [];
-    [['H. Extra Normal','HExtra'],['H. Extra Festiva','HExtraFest']].forEach(([name, key]) => {
-      hheeRows.push(r);
-      lbl(r, '  ' + name, { indent: 2 });
-      inputCell(r, 3, 0, NUM);
-      frmCell(r, 4, `C$${PRICE_ROWS[key]}`, EURO, C.gris, C.muted);
-      frmCell(r, 5, `C${r}*D${r}`, EURO, C.gris, C.text);
-      { const c = R(r, 6); c.value = 'HHEE-AT';
-        fnt(c, { size: 9, bold: true, color: C.azul }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-      ws.getRow(r).height = 18; r++;
-    });
+  // ── ART. 7p ─────────────────────────────────────────────────────────────
+  secRow(ws, R.SEC7P, '🌍  ARTÍCULO 7p — Renta trabajos en el extranjero (potencialmente exenta de IRPF hasta 60.100€/año)', C.narB);
+  dataRow(R.D7P,   'Nº días fuera España (para 7p)', 'input 7p', 'input', 0,
+    {fmt:NUM, bg:C.nar, fg:C.narDark, tagColor:C.narDark});
+  dataRow(R.PROP7P,'Proporción salario días fuera',  '7p', 'formula',
+    (i,col) => `(${CF(K.BRUTO)}/${DIAS[i]})*${cl(col)}${R.D7P}`,
+    {bg:C.nar, fg:C.narDark, tagColor:C.narDark});
+  dataRow(R.TOT7P, 'Renta 7p (prop.sal + desp + días fuera €)', '7p TOTAL', 'formula',
+    (i,col) => `${cl(col)}${R.PROP7P}+${cl(col)}${R.DES}+${cl(col)}${R.DESF}+${cl(col)}${R.DIAF}`,
+    {bg:C.nar, fg:C.narDark, bold:true, h:20, tagColor:C.narDark});
+  dataRow(R.IRPF7P,'IRPF retenido sobre renta 7p (a reclamar)', '→ Renta', 'formula',
+    (i,col) => `${cl(col)}${R.TOT7P}*${cl(col)}${R.IRPF}`,
+    {bg:C.narB, fg:C.blanco, bold:true, h:22, tagColor:C.blanco});
 
-    // ── Exentos ─────────────────────────────────────────────────────────────
-    ws.mergeCells(r, 1, r, 6);
-    { const c = R(r, 1); c.value = '── EXENTOS (no cotizan SS ni IRPF) ─────────────────────────────────────';
-      fnt(c, { size: 9, italic: true, bold: true, color: C.verdeSuave }); fill(c, C.verdeLight);
-      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }; }
-    ws.getRow(r).height = 16; r++;
+  divRow(ws, R.SP2, C.gris, 8);
 
-    const ROW_DIETA = r;
-    lbl(r, '  Dieta (importe directo)', { indent: 2 });
-    inputCell(r, 3, 0, EURO);
-    { const c = R(r, 4); c.value = '(directo)';
-      fnt(c, { italic: true, size: 9, color: C.muted }); c.alignment = { horizontal: 'center' }; }
-    frmCell(r, 5, `C${r}`, EURO, C.verdeLight, C.verdeSuave);
-    { const c = R(r, 6); c.value = 'EXENTO';
-      fnt(c, { size: 9, bold: true, color: C.verdeSuave }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    ws.getRow(r).height = 18; r++;
+  // ── RESUMEN ANUAL ART. 7p ────────────────────────────────────────────────
+  secRow(ws, R.RES7P, '📊  RESUMEN ANUAL ARTÍCULO 7p', C.narB);
 
-    const ROW_TIQUETS = r;
-    lbl(r, '  Tiquets (importe directo)', { indent: 2 });
-    inputCell(r, 3, 0, EURO);
-    { const c = R(r, 4); c.value = '(directo)';
-      fnt(c, { italic: true, size: 9, color: C.muted }); c.alignment = { horizontal: 'center' }; }
-    frmCell(r, 5, `C${r}`, EURO, C.verdeLight, C.verdeSuave);
-    { const c = R(r, 6); c.value = 'EXENTO';
-      fnt(c, { size: 9, bold: true, color: C.verdeSuave }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    ws.getRow(r).height = 18; r++;
+  function sumBlock(row, label, formula, bg, fg, bold=false, h=22) {
+    ws.mergeCells(row,1,row,CT-3);
+    const lc=ws.getCell(row,1); lc.value=label;
+    fnt(lc,{b:bold,sz:10,col:fg}); fillCell(lc,bg); aln(lc,{h:'left',v:'middle',ind:2});
+    ws.mergeCells(row,CT-2,row,CT);
+    const vc=ws.getCell(row,CT-2);
+    vc.value={formula}; vc.numFmt=EURO; fnt(vc,{b:bold,sz:bold?13:11,col:fg});
+    fillCell(vc,bg); brd(vc); aln(vc,{h:'right',v:'middle'});
+    ws.getRow(row).height=h;
+  }
 
-    const ROW_KM = r;
-    lbl(r, '  KM (km × 0,30€)', { indent: 2 });
-    inputCell(r, 3, 0, NUM);
-    frmCell(r, 4, `C$${PRICE_ROWS.KM}`, EURO, C.gris, C.muted);
-    frmCell(r, 5, `C${r}*D${r}`, EURO, C.verdeLight, C.verdeSuave);
-    { const c = R(r, 6); c.value = 'EXENTO';
-      fnt(c, { size: 9, bold: true, color: C.verdeSuave }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    ws.getRow(r).height = 18; r++;
+  sumBlock(R.SUM7P,     'Renta exenta acumulada anual (Art. 7p)',       sumFrm(R.TOT7P),   C.nar,    C.narDark);
+  sumBlock(R.LIM7P,     'Límite legal Art. 7p',                         '60100',           C.nar,    C.narDark);
+  { ws.getCell(R.LIM7P, CT-2).value=60100; ws.getCell(R.LIM7P,CT-2).numFmt=EURO; }
+  sumBlock(R.REST7P,    'Renta exenta restante hasta límite',           `60100-${sumFrm(R.TOT7P)}`, C.nar, C.narDark);
+  sumBlock(R.IRPF7PTOT, 'IRPF retenido total a recuperar en la Renta', sumFrm(R.IRPF7P),  C.narB,   C.blanco, true, 30);
 
-    divider(r); r++;
+  divRow(ws, R.SP3, C.gris, 8);
 
-    // ── Subtotales ──────────────────────────────────────────────────────────
-    const sujetasCCFrm = sujetasCCRows.map(sr => `E${sr}`).join('+');
-    const hheeFrm      = hheeRows.map(sr => `E${sr}`).join('+');
+  // ── NOTA FINAL ───────────────────────────────────────────────────────────
+  ws.mergeCells(R.NOTE,1,R.NOTE,CT);
+  { const c=ws.getCell(R.NOTE,1);
+    c.value='⚠️  Celdas amarillas = editables  |  IRPF editable por mes (fila "IRPF %")  |  '
+           +'Art.7p requiere trabajo físico en el extranjero y país destino con IRPF equivalente; consulta con gestor  |  '
+           +'Paga extra ⭐ = normalmente junio y diciembre; ponla en la fila "Paga Extra €" del mes correspondiente';
+    fnt(c,{sz:9,it:true,col:C.amDark}); fillCell(c,C.am); aln(c,{h:'left',v:'middle',ind:1,wrap:true});
+    ws.getRow(R.NOTE).height=32; }
 
-    const ROW_BRUTO_SUJETO = r;
-    blockRow(r, 'BRUTO SUJETO (base IRPF = sujeto CC + HHEE)',
-      `${sujetasCCFrm}+${hheeFrm}`, EURO, C.moradoLight, C.moradoDark, 10, true); r++;
+  // Make Nómina 2026 the active sheet
+  wb.views = [{ activeTab: 1 }];
 
-    const ROW_EXENTOS = r;
-    blockRow(r, 'EXENTOS (dieta + tiquets + km)',
-      `E${ROW_DIETA}+E${ROW_TIQUETS}+E${ROW_KM}`, EURO, C.verdeLight, C.verdeSuave, 10, true); r++;
-
-    const ROW_HHEE = r;
-    blockRow(r, 'Total Horas Extra (HHEE)',
-      hheeFrm, EURO, C.azulLight, C.azul, 9, false); r++;
-
-    divider(r); r++;
-
-    // ── SS ─────────────────────────────────────────────────────────────────
-    ws.mergeCells(r, 1, r, 6);
-    { const c = R(r, 1); c.value = '── COTIZACIÓN SEGURIDAD SOCIAL ───────────────────────────────────────────';
-      fnt(c, { size: 9, italic: true, bold: true, color: C.rojo }); fill(c, C.rojoLight);
-      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }; }
-    ws.getRow(r).height = 16; r++;
-
-    const ROW_BASE_CC = r;
-    blockRow(r, `  Base CC = sujeto CC + prorrata ($C$${ROW_PRORRATA})`,
-      `${sujetasCCFrm}+C$${ROW_PRORRATA}`, EURO, C.rojoLight, C.rojoSuave, 9);
-    { const c = R(r, 6); c.value = 'Base CC';
-      fnt(c, { size: 9, bold: true, color: C.rojoSuave }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    r++;
-
-    const ROW_BASE_AT = r;
-    blockRow(r, '  Base AT/Desempleo = Base CC + HHEE',
-      `E${ROW_BASE_CC}+E${ROW_HHEE}`, EURO, C.rojoLight, C.rojoSuave, 9);
-    { const c = R(r, 6); c.value = 'Base AT';
-      fnt(c, { size: 9, bold: true, color: C.rojoSuave }); c.alignment = { horizontal: 'center', vertical: 'middle' }; }
-    r++;
-
-    const ROW_SS_CC  = r; ssRow(r, '  (-) SS Contingencias Comunes', `C$${SS_RATE_ROWS.SS_CC}`,  `E${ROW_BASE_CC}*C$${SS_RATE_ROWS.SS_CC}`);  r++;
-    const ROW_SS_DES = r; ssRow(r, '  (-) SS Desempleo + FP',        `C$${SS_RATE_ROWS.SS_DES}`, `E${ROW_BASE_AT}*C$${SS_RATE_ROWS.SS_DES}`); r++;
-    const ROW_SS_HH  = r; ssRow(r, '  (-) SS Horas Extra',           `C$${SS_RATE_ROWS.SS_HH}`,  `E${ROW_HHEE}*C$${SS_RATE_ROWS.SS_HH}`);    r++;
-    const ROW_SS_MEI = r; ssRow(r, '  (-) SS MEI',                   `C$${SS_RATE_ROWS.SS_MEI}`, `E${ROW_BASE_AT}*C$${SS_RATE_ROWS.SS_MEI}`); r++;
-
-    const ROW_SS_TOTAL = r;
-    blockRow(r, 'TOTAL SS TRABAJADOR',
-      `E${ROW_SS_CC}+E${ROW_SS_DES}+E${ROW_SS_HH}+E${ROW_SS_MEI}`,
-      EURO, C.rojo, C.blanco, 10, true); r++;
-
-    divider(r); r++;
-
-    // ── IRPF ────────────────────────────────────────────────────────────────
-    const ROW_IRPF_DED = r;
-    ws.mergeCells(r, 1, r, 3);
-    { const lc = R(r, 1); lc.value = '  (-) Retención IRPF';
-      fnt(lc, { bold: true, size: 10, color: C.rojo }); fill(lc, C.rojoLight);
-      lc.alignment = { vertical: 'middle', horizontal: 'left', indent: 3 }; }
-    { const c = R(r, 4); c.value = { formula: `F${ROW_IRPF_MES}` }; c.numFmt = PCT;
-      fnt(c, { bold: true, size: 10, color: C.rojo }); fill(c, C.rojoLight); brd(c, C.grisBorde);
-      c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    frmCell(r, 5, `E${ROW_BRUTO_SUJETO}*F${ROW_IRPF_MES}`, EURO, C.rojoLight, C.rojo);
-    ws.getRow(r).height = 22; r++;
-
-    divider(r); r++;
-
-    // ── NETO ────────────────────────────────────────────────────────────────
-    const ROW_NETO = r;
-    ws.mergeCells(r, 1, r, 4);
-    { const c = R(r, 1); c.value = '💳  LÍQUIDO A PERCIBIR (NETO)';
-      fnt(c, { bold: true, size: 13, color: C.blanco }); fill(c, C.verde);
-      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }; }
-    { const c = R(r, 5);
-      c.value = { formula: `E${ROW_BRUTO_SUJETO}+E${ROW_EXENTOS}-E${ROW_SS_TOTAL}-E${ROW_IRPF_DED}` };
-      c.numFmt = EURO; fnt(c, { bold: true, size: 13, color: C.blanco });
-      fill(c, C.verde); brd(c, C.verde); c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    { const c = R(r, 6); c.value = '✓ v3';
-      fnt(c, { size: 9, bold: true, color: 'D1FAE5' }); fill(c, C.verde);
-      c.alignment = { vertical: 'middle', horizontal: 'center' }; }
-    ws.getRow(r).height = 30; r++;
-
-    // ── Art. 7p ─────────────────────────────────────────────────────────────
-    ws.mergeCells(r, 1, r, 6);
-    { const c = R(r, 1);
-      c.value = '🌍  ARTÍCULO 7p — Renta por trabajos en el extranjero (potencialmente exenta de IRPF) ─────────';
-      fnt(c, { size: 9, italic: false, bold: true, color: C.naranjaDark }); fill(c, C.naranja);
-      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }; }
-    ws.getRow(r).height = 18; r++;
-
-    // Fórmula 7p: prop. salario + plus desp + plus desp fest + pago días fuera
-    // La proporción de salario por días fuera = (bruto/días_mes) × qty_días_fuera
-    const propSalFrm = `(C$${ROW_BRUTO}/${diasN})*C${ROW_DIAS_FUERA_VAR}`;
-    const desp7pFrm  = `E${ROW_H_DESP_VAR}`;
-    const despF7pFrm = `E${ROW_H_DESP_FEST_VAR}`;
-    const diasFPagoFrm = `E${ROW_DIAS_FUERA_VAR}`;
-
-    artRow(r, '  Proporción salario días fuera España', propSalFrm);   r++;
-    artRow(r, '  Plus Desplazamiento',                  desp7pFrm);    r++;
-    artRow(r, '  Plus Desplazamiento Festivo',           despF7pFrm);   r++;
-    artRow(r, '  Pago extra días fuera (bruto/día)',     diasFPagoFrm); r++;
-
-    const ROW_7P_TOTAL = r;
-    ws.mergeCells(r, 1, r, 4);
-    { const lc = R(r, 1); lc.value = '  RENTA POTENCIALMENTE EXENTA (Art. 7p)';
-      fnt(lc, { bold: true, size: 10, color: C.naranjaDark }); fill(lc, C.naranja);
-      lc.alignment = { vertical: 'middle', horizontal: 'left', indent: 2 }; }
-    { const fc = R(r, 5);
-      fc.value = { formula: `${propSalFrm}+${desp7pFrm}+${despF7pFrm}+${diasFPagoFrm}` };
-      fc.numFmt = EURO; fnt(fc, { bold: true, size: 10, color: C.naranjaDark });
-      fill(fc, C.naranja); brd(fc, C.grisBorde);
-      fc.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    ws.getRow(r).height = 22; r++;
-
-    const ROW_7P_IRPF = r;
-    ws.mergeCells(r, 1, r, 3);
-    { const lc = R(r, 1); lc.value = '  IRPF retenido sobre renta 7p (a reclamar en Renta)';
-      fnt(lc, { bold: true, size: 10, color: C.naranjaDark }); fill(lc, C.naranja);
-      lc.alignment = { vertical: 'middle', horizontal: 'left', indent: 3 }; }
-    { const c = R(r, 4); c.value = { formula: `F${ROW_IRPF_MES}` }; c.numFmt = PCT;
-      fnt(c, { bold: true, color: C.naranjaDark }); fill(c, C.naranja); brd(c, C.grisBorde);
-      c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    { const fc = R(r, 5);
-      fc.value = { formula: `E${ROW_7P_TOTAL}*F${ROW_IRPF_MES}` }; fc.numFmt = EURO;
-      fnt(fc, { bold: true, size: 10, color: C.naranjaDark });
-      fill(fc, C.naranja); brd(fc, C.grisBorde);
-      fc.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    ws.getRow(r).height = 22; r++;
-
-    // Nota art. 7p
-    ws.mergeCells(r, 1, r, 6);
-    { const c = R(r, 1);
-      c.value = 'ℹ️  Art. 7p LIRPF: si los días fuera son en otro país con IRPF equivalente, esa renta puede estar exenta (límite 60.100€/año). '
-              + 'El IRPF aquí retenido se recupera en la Declaración de la Renta. Consulta con gestor.';
-      fnt(c, { size: 8, italic: true, color: C.naranjaDark }); fill(c, C.naranja);
-      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true }; }
-    ws.getRow(r).height = 30; r++;
-
-    mesRefs[mes] = {
-      netoRow:        ROW_NETO,
-      brutoSujetoRow: ROW_BRUTO_SUJETO,
-      ssRow:          ROW_SS_TOTAL,
-      irpfRow:        ROW_IRPF_DED,
-      exentosRow:     ROW_EXENTOS,
-      art7pRow:       ROW_7P_TOTAL,
-      art7pIrpfRow:   ROW_7P_IRPF,
-    };
-
-    spacer(r, C.gris, 10); r++;
-  });
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // RESUMEN ANUAL
-  // ══════════════════════════════════════════════════════════════════════════
-  ws.getColumn('G').width = 15;
-  ws.getColumn('H').width = 18;
-  ws.getColumn('I').width = 18;
-
-  secHeader(r, '📅  RESUMEN ANUAL 2026', C.moradoDark, C.blanco, 13); r++;
-
-  // Cabecera 9 cols
-  ['','MES','Bruto Sujeto','SS Total (−)','IRPF (−)','Exentos (+)','NETO','Renta 7p','IRPF recup. 7p'].forEach((t, i) => {
-    const c = R(r, i+1); c.value = t;
-    fnt(c, { bold: true, size: 9, color: C.blanco });
-    fill(c, i >= 7 ? C.naranjaB : C.morado);
-    c.alignment = { horizontal: i>=2?'center':'left', vertical: 'middle', indent: i===1?1:0 };
-  });
-  ws.getRow(r).height = 20; r++;
-
-  const resumenStart = r;
-  MESES.forEach((mes, idx) => {
-    const ref = mesRefs[mes];
-    const bg  = idx % 2 === 1 ? C.moradoLight : C.blanco;
-    const bgN = idx % 2 === 1 ? 'FFF0E6' : C.naranja;
-
-    lbl(r, mes, { bold: true }); R(r, 2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
-    frmCell(r, 3, `E${ref.brutoSujetoRow}`, EURO, bg, C.text);
-    frmCell(r, 4, `E${ref.ssRow}`,          EURO, bg, C.rojo);
-    frmCell(r, 5, `E${ref.irpfRow}`,        EURO, bg, C.rojo);
-    frmCell(r, 6, `E${ref.exentosRow}`,     EURO, bg, C.verdeSuave);
-    { const c = R(r, 7); c.value = { formula: `E${ref.netoRow}` }; c.numFmt = EURO;
-      fnt(c, { bold: true, size: 11, color: C.verde }); fill(c, bg); brd(c, C.grisBorde);
-      c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    frmCell(r, 8, `E${ref.art7pRow}`,       EURO, bgN, C.naranjaDark);
-    frmCell(r, 9, `E${ref.art7pIrpfRow}`,   EURO, bgN, C.naranjaDark);
-    ws.getRow(r).height = 20; r++;
-  });
-  const resumenEnd = r - 1;
-
-  divider(r); r++;
-
-  // Totales anuales
-  ws.mergeCells(r, 1, r, 2);
-  { const c = R(r, 1); c.value = 'TOTALES ANUALES';
-    fnt(c, { bold: true, size: 11, color: C.blanco }); fill(c, C.moradoDark);
-    c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }; }
-  [3,4,5,6].forEach(col => {
-    const letter = ['','A','B','C','D','E','F','G','H','I'][col];
-    const c = R(r, col);
-    c.value = { formula: `SUM(${letter}${resumenStart}:${letter}${resumenEnd})` };
-    c.numFmt = EURO; fnt(c, { bold: true, color: C.blanco });
-    fill(c, C.moradoDark); brd(c, C.morado);
-    c.alignment = { vertical: 'middle', horizontal: 'right' };
-  });
-  { const c = R(r, 7); c.value = { formula: `SUM(G${resumenStart}:G${resumenEnd})` }; c.numFmt = EURO;
-    fnt(c, { bold: true, size: 13, color: C.blanco }); fill(c, C.verde); brd(c, C.verde);
-    c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-  [8,9].forEach(col => {
-    const letter = ['','A','B','C','D','E','F','G','H','I'][col];
-    const c = R(r, col); c.value = { formula: `SUM(${letter}${resumenStart}:${letter}${resumenEnd})` };
-    c.numFmt = EURO; fnt(c, { bold: true, size: 11, color: C.blanco });
-    fill(c, C.naranjaB); brd(c, C.naranjaB);
-    c.alignment = { vertical: 'middle', horizontal: 'right' };
-  });
-  ws.getRow(r).height = 26; r++;
-
-  spacer(r, C.gris, 8); r++;
-
-  // Bloques destacados anuales
-  ws.mergeCells(r, 1, r, 5);
-  { const c = R(r, 1); c.value = '💳  NETO ANUAL TOTAL 2026';
-    fnt(c, { bold: true, size: 14, color: C.blanco }); fill(c, C.verde);
-    c.alignment = { vertical: 'middle', horizontal: 'center' }; }
-  ws.mergeCells(r, 6, r, 9);
-  { const c = R(r, 6);
-    c.value = { formula: `SUM(G${resumenStart}:G${resumenEnd})` }; c.numFmt = EURO;
-    fnt(c, { bold: true, size: 16, color: C.blanco }); fill(c, C.verde); brd(c, C.verde);
-    c.alignment = { vertical: 'middle', horizontal: 'right' }; }
-  ws.getRow(r).height = 38; r++;
-
-  spacer(r, C.gris, 6); r++;
-
-  // Art. 7p anual destacado
-  ws.mergeCells(r, 1, r, 9);
-  { const c = R(r, 1);
-    c.value = '🌍  ARTÍCULO 7p — Resumen anual';
-    fnt(c, { bold: true, size: 12, color: C.blanco }); fill(c, C.naranjaB);
-    c.alignment = { vertical: 'middle', horizontal: 'center' };
-    ws.getRow(r).height = 28; } r++;
-
-  [
-    ['Renta exenta acumulada (Art. 7p)',  `SUM(H${resumenStart}:H${resumenEnd})`],
-    ['Límite legal Art. 7p',             '60100'],
-    ['Renta exenta restante hasta límite', `60100-SUM(H${resumenStart}:H${resumenEnd})`],
-    ['IRPF retenido total a recuperar',  `SUM(I${resumenStart}:I${resumenEnd})`],
-  ].forEach(([label, frm]) => {
-    ws.mergeCells(r, 1, r, 6);
-    { const lc = R(r, 1); lc.value = '  ' + label;
-      fnt(lc, { bold: label.includes('recuperar'), size: 11, color: C.naranjaDark }); fill(lc, C.naranja);
-      lc.alignment = { vertical: 'middle', horizontal: 'left', indent: 2 }; }
-    ws.mergeCells(r, 7, r, 9);
-    { const fc = R(r, 7);
-      fc.value = frm === '60100' ? 60100 : { formula: frm }; fc.numFmt = EURO;
-      const isRec = label.includes('recuperar');
-      fnt(fc, { bold: true, size: isRec ? 14 : 11, color: C.naranjaDark }); fill(fc, C.naranja);
-      brd(fc, C.grisBorde); fc.alignment = { vertical: 'middle', horizontal: 'right' }; }
-    ws.getRow(r).height = isRec => isRec ? 32 : 24;
-    ws.getRow(r).height = label.includes('recuperar') ? 32 : 22; r++;
-  });
-
-  spacer(r, C.gris, 8); r++;
-
-  ws.mergeCells(r, 1, r, 9);
-  { const c = R(r, 1);
-    c.value = '⚠️  Art. 7p: requiere que el trabajo se realice físicamente en el extranjero, el país destino tenga IRPF equivalente, y la empresa beneficiaria sea la entidad para la que trabajas. '
-            + 'Consulta con tu gestor antes de aplicarlo en la Declaración de la Renta.  |  '
-            + 'Prorrata pagas extra: ponla a 0 si no aparece en tu nómina, o al valor que muestre (ej: 419,61€) si aparece en la base de cotización.';
-    fnt(c, { size: 9, italic: true, color: '78350F' }); fill(c, C.amarillo);
-    c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
-    ws.getRow(r).height = 36; }
-
-  // ── Escribir fichero ────────────────────────────────────────────────────
-  const outPath = '/home/user/Mi-memoria/calculadora-nomina-v3.xlsx';
+  const outPath='/home/user/Mi-memoria/calculadora-nomina-v3.xlsx';
   await wb.xlsx.writeFile(outPath);
-  console.log('✅  Generado:', outPath);
-  console.log('');
-  console.log('Cambios respecto a v2:');
-  console.log('  - Prorrata pagas extra: 0 por defecto (solo base SS si aparece en nómina)');
-  console.log('  - SS en 4 líneas: Base CC (CC 4.70%) + Base AT (Des+FP 1.65%, HHEE 4.70%, MEI 0.13%)');
-  console.log('  - Art. 7p por mes: prop. salario + desplazamiento + días fuera');
-  console.log('  - Resumen anual Art. 7p: total exento, límite 60.100€, IRPF a recuperar');
+  console.log('✅ Generado:', outPath);
+  console.log('   Layout: horizontal (meses en columnas D-O)');
+  console.log('   Filas totales: ~63 (vs ~720 del layout vertical)');
+  console.log('   Hojas: Nómina 2026 + Configuración');
+  console.log('   Novedades: paga extra ⭐ (jun/dic), Art.7p, SS multi-base');
 }
 
-main().catch(err => { console.error('❌', err.message); process.exit(1); });
+main().catch(e => { console.error('❌', e.message); process.exit(1); });
