@@ -408,6 +408,50 @@ async function main() {
     fnt(c,{sz:9,it:true,col:C.amDark}); fillCell(c,C.am); aln(c,{h:'left',v:'middle',ind:1,wrap:true});
     ws.getRow(R.NOTE).height=32; }
 
+  // ── RESUMEN BRUTO / NETO ANUAL ───────────────────────────────────────────
+  // 4 cifras: bruto total, bruto fijo, neto total, neto fijo
+  const RS = R.NOTE + 2;
+
+  function sumRow(row, label, formula, bg, fg, bold=false) {
+    ws.mergeCells(row, 1, row, CT-1);
+    const lc=ws.getCell(row,1); lc.value=label;
+    fnt(lc,{b:bold,sz:10,col:fg}); fillCell(lc,bg); aln(lc,{h:'left',v:'middle',ind:2});
+    const vc=ws.getCell(row,CT); vc.value={formula}; vc.numFmt=EURO;
+    fnt(vc,{b:bold,sz:bold?14:11,col:fg}); fillCell(vc,bg); brd(vc); aln(vc,{h:'right',v:'middle'});
+    ws.getRow(row).height = bold ? 30 : 22;
+  }
+
+  divRow(ws, RS-1, C.gris, 10);
+
+  ws.mergeCells(RS,1,RS,CT);
+  { const c=ws.getCell(RS,1);
+    c.value='📊  RESUMEN ANUAL — Bruto y Neto total (con variables) vs Solo salario fijo (sin variables)';
+    fnt(c,{b:true,sz:11,col:C.blanco}); fillCell(c,C.moradoDark); aln(c,{h:'left',v:'middle',ind:1});
+    ws.getRow(RS).height=24; }
+
+  // Bruto CON variables = bruto sujeto + exentos + pagas extras (todo lo devengado en el año)
+  const bCV = `${sumFrm(R.BS)}+${sumFrm(R.EX)}+${sumFrm(R.PE)}`;
+  // Bruto SIN variables = solo salario convenio × 12 + pagas extras (mínimo garantizado)
+  const bSV = `${CF(K.BRUTO)}*12+${sumFrm(R.PE)}`;
+  // Neto CON variables = suma de NETO TOTAL de todos los meses
+  const nCV = sumFrm(R.NETOT);
+  // Neto SIN variables = salario×12 - SS_fijo - IRPF_fijo + neto_pagas_extras
+  // SS_fijo: no hay HHEE → Base CC = Base AT = salario×12 + prorrata×12
+  const ss12 = `(${CF(K.BRUTO)}*12+${CF(K.PRO)}*12)*(${CF(K.SSCC)}+${CF(K.SSDES)}+${CF(K.SSMEI)})`;
+  const nSV  = `${CF(K.BRUTO)}*12-${ss12}-${CF(K.BRUTO)}*12*${CF(K.IRPF)}+${sumFrm(R.PENET)}`;
+
+  sumRow(RS+1, '💰  BRUTO ANUAL con variables  (devengado total: salario + extras + exentos + pagas)', bCV, C.moradoLight, C.moradoDark, true);
+  sumRow(RS+2, '     Bruto anual sin variables  (solo salario × 12 + pagas extras)',                  bSV, C.gris,        C.muted);
+  sumRow(RS+3, '     Extra bruto generado por variables',  `(${bCV})-(${bSV})`,                            C.gris,        C.text);
+
+  divRow(ws, RS+4, C.borde, 3);
+
+  sumRow(RS+5, '💳  NETO ANUAL con variables  (líquido total cobrado)',                               nCV, C.verdeLight, C.verdeSuave, true);
+  sumRow(RS+6, '     Neto anual sin variables  (solo salario fijo neto × 12 + neto pagas extras)',    nSV, C.gris,       C.muted);
+  sumRow(RS+7, '     Extra neto generado por variables',   `(${nCV})-(${nSV})`,                           C.gris,       C.text);
+
+  divRow(ws, RS+8, C.gris, 8);
+
   // Make Nómina 2026 the active sheet
   wb.views = [{ activeTab: 1 }];
 
