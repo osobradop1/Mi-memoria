@@ -152,7 +152,7 @@ async function main() {
     [K.PDESF, 'H. Desp. Festivo',       12.68, 'Base CC + Art.7p'],
     [K.PHEX,  'H. Extra Normal',        19.77, 'HHEE + Art.7p'],
     [K.PHEXF, 'H. Extra Festiva',       19.77, 'HHEE'],
-    [K.PDIAF, 'Días fuera (bruto/día)', null,  'Base CC + Art.7p  ← = C6'],
+    [K.PDIAF, 'Días fuera (precio/día ref.)', null,  'Ref. informativa ← = C6 (no suma a devengos; solo para referencia del valor diario)'],
     [K.PKM,   'KM',                     0.30,  'Exento'],
   ].forEach(([row, name, val, tipo]) => {
     lblC(wc.getCell(row,2), name, {ind:1});
@@ -228,7 +228,7 @@ async function main() {
   // type: 'input'|'formula'|'cfgref'
   // opts: { fmt, bg, fg, bold, tag, totalFrm }
   function dataRow(row, label, tag, type, monthFn, opts={}) {
-    const {fmt=EURO, bg=C.gris, fg=C.text, bold=false, tagColor=C.muted, totalFrm=null} = opts;
+    const {fmt=EURO, bg=C.gris, fg=C.text, bold=false, tagColor=C.muted, totalFrm=null, totalFmt=EURO} = opts;
     ws.getRow(row).height = opts.h || 18;
 
     // Label
@@ -259,7 +259,7 @@ async function main() {
     const tc=ws.getCell(row,CT);
     const tfrm = totalFrm || (type==='input'||type==='formula' ? sumFrm(row) : null);
     if(tfrm) {
-      tc.value={formula:tfrm}; tc.numFmt=EURO;
+      tc.value={formula:tfrm}; tc.numFmt=totalFmt;
       fnt(tc,{b:bold,col:bold?fg:C.muted}); fillCell(tc, bold?bg:C.gris); brd(tc); aln(tc);
     }
   }
@@ -283,7 +283,7 @@ async function main() {
   dataRow(R.DIF,  'H. Disp. Festiva (horas)',      'SUJETO-CC',  'input', 0,                     {fmt:NUM, totalFrm:`${sumFrm(R.DIF)}*${CF(K.PDIF)}`});
   dataRow(R.DES,  'H. Desplazamiento (horas)',     'CC + 7p',    'input', (i)=>i===1?20.5:0,     {fmt:NUM, tagColor:C.narDark, totalFrm:`${sumFrm(R.DES)}*${CF(K.PDES)}`});
   dataRow(R.DESF, 'H. Desp. Festivo (horas)',      'CC + 7p',    'input', (i)=>i===1?18:0,       {fmt:NUM, tagColor:C.narDark, totalFrm:`${sumFrm(R.DESF)}*${CF(K.PDESF)}`});
-  dataRow(R.DIAF, 'Días fuera (días)',             'CC + 7p',    'input', 0,                     {fmt:NUM, tagColor:C.narDark, totalFrm:`${sumFrm(R.DIAF)}*${CF(K.PDIAF)}`});
+  dataRow(R.DIAF, 'Días fuera España (días)',       'contador 7p','input', 0,                     {fmt:NUM, tagColor:C.narDark, totalFrm:sumFrm(R.DIAF), totalFmt:NUM});
   dataRow(R.HEX,  'H. Extra Normal (horas)',       'HHEE + 7p',  'input', (i)=>i===1?24:0,       {fmt:NUM, tagColor:C.morado,  totalFrm:`${sumFrm(R.HEX)}*${CF(K.PHEX)}`});
   dataRow(R.HEXF, 'H. Extra Festiva (horas)',      'HHEE',       'input', 0,                     {fmt:NUM, tagColor:C.morado,  totalFrm:`${sumFrm(R.HEXF)}*${CF(K.PHEXF)}`});
   divRow(ws, R.DIV2, C.borde, 2);
@@ -303,14 +303,14 @@ async function main() {
   divRow(ws, R.DIV4, C.borde, 4);
 
   // ── TOTALES ─────────────────────────────────────────────────────────────
-  secRow(ws, R.SEC_TOT, '🔢  TOTALES CALCULADOS', C.moradoDark);
+  secRow(ws, R.SEC_TOT, '🔢  TOTALES CALCULADOS  ·  Bruto Sujeto = devengos del mes sin paga extra  ·  Paga extra ⭐ aparece en su sección propia y se suma en el RESUMEN ANUAL al pie de la hoja', C.moradoDark);
   // BS, HHEE y Exentos: las qty rows se multiplican por su precio de config
   dataRow(R.BS,   'Bruto Sujeto (base IRPF)',    'BASE IRPF',  'formula',
     (i,col) => `${cl(col)}${R.SAL}+${cl(col)}${R.ACT}`
       +`+${cl(col)}${R.TUR}*${CF(K.PTUR)}+${cl(col)}${R.NOC}*${CF(K.PNOC)}`
       +`+${cl(col)}${R.FRI}*${CF(K.PFRI)}+${cl(col)}${R.DIS}*${CF(K.PDIS)}`
       +`+${cl(col)}${R.DIF}*${CF(K.PDIF)}+${cl(col)}${R.DES}*${CF(K.PDES)}`
-      +`+${cl(col)}${R.DESF}*${CF(K.PDESF)}+${cl(col)}${R.DIAF}*${CF(K.PDIAF)}`
+      +`+${cl(col)}${R.DESF}*${CF(K.PDESF)}`
       +`+${cl(col)}${R.HEX}*${CF(K.PHEX)}+${cl(col)}${R.HEXF}*${CF(K.PHEXF)}`,
     {bg:C.moradoLight, fg:C.moradoDark, bold:true});
   dataRow(R.HHEE, 'Total Horas Extra (HHEE)',    'SS sep.',    'formula',
@@ -378,8 +378,8 @@ async function main() {
     (i,col) => `(${CF(K.BRUTO)}/${DIAS[i]})*${cl(col)}${R.D7P}`,
     {bg:C.nar, fg:C.narDark, tagColor:C.narDark});
   // TOT7P usa qty×precio para DES, DESF, DIAF
-  dataRow(R.TOT7P, 'Renta 7p (prop.sal + desp + días fuera €)', '7p TOTAL', 'formula',
-    (i,col) => `${cl(col)}${R.PROP7P}+${cl(col)}${R.DES}*${CF(K.PDES)}+${cl(col)}${R.DESF}*${CF(K.PDESF)}+${cl(col)}${R.DIAF}*${CF(K.PDIAF)}`,
+  dataRow(R.TOT7P, 'Renta 7p (salario prop. días fuera + desplazamiento)', '7p TOTAL', 'formula',
+    (i,col) => `${cl(col)}${R.PROP7P}+${cl(col)}${R.DES}*${CF(K.PDES)}+${cl(col)}${R.DESF}*${CF(K.PDESF)}`,
     {bg:C.nar, fg:C.narDark, bold:true, h:20, tagColor:C.narDark});
   dataRow(R.IRPF7P,'IRPF retenido sobre renta 7p (a reclamar)', '→ Renta', 'formula',
     (i,col) => `${cl(col)}${R.TOT7P}*${cl(col)}${R.IRPF}`,
@@ -413,8 +413,9 @@ async function main() {
   ws.mergeCells(R.NOTE,1,R.NOTE,CT);
   { const c=ws.getCell(R.NOTE,1);
     c.value='⚠️  Celdas amarillas = editables  |  IRPF editable por mes (fila "IRPF %")  |  '
-           +'Art.7p requiere trabajo físico en el extranjero y país destino con IRPF equivalente; consulta con gestor  |  '
-           +'Paga extra ⭐ = normalmente junio y diciembre; ponla en la fila "Paga Extra €" del mes correspondiente';
+           +'Días fuera España = introduce NÚMERO DE DÍAS (solo cuenta para Art.7p; NO suma al bruto mensual, la paga por estar fuera va en Dieta/Desplazamiento)  |  '
+           +'Paga extra ⭐ = ponla en junio/diciembre; el "Bruto Sujeto" del mes NO la incluye pero el BRUTO ANUAL del resumen inferior SÍ la suma  |  '
+           +'Art.7p: requiere trabajo físico fuera de España; consulta con gestor';
     fnt(c,{sz:9,it:true,col:C.amDark}); fillCell(c,C.am); aln(c,{h:'left',v:'middle',ind:1,wrap:true});
     ws.getRow(R.NOTE).height=32; }
 
