@@ -429,26 +429,26 @@ async function main() {
     fnt(c,{b:true,sz:11,col:C.blanco}); fillCell(c,C.moradoDark); aln(c,{h:'left',v:'middle',ind:1});
     ws.getRow(RS).height=24; }
 
-  // Bruto CON variables = bruto sujeto + exentos + pagas extras (todo lo devengado en el año)
+  // Bruto CON variables = todo lo devengado en el año (salario + variables + exentos + pagas extra)
   const bCV = `${sumFrm(R.BS)}+${sumFrm(R.EX)}+${sumFrm(R.PE)}`;
-  // Bruto SIN variables = solo salario convenio × 12 + pagas extras (mínimo garantizado)
-  const bSV = `${CF(K.BRUTO)}*12+${sumFrm(R.PE)}`;
-  // Neto CON variables = suma de NETO TOTAL de todos los meses
+  // Bruto SIN variables = SOLO salario convenio × 12 (sin pagas extra, sin extras)
+  const bSV = `${CF(K.BRUTO)}*12`;
+  // Neto CON variables = suma de NETO TOTAL de todos los meses (incluye pagas extra)
   const nCV = sumFrm(R.NETOT);
-  // Neto SIN variables = salario×12 - SS_fijo - IRPF_fijo + neto_pagas_extras
-  // SS_fijo: no hay HHEE → Base CC = Base AT = salario×12 + prorrata×12
+  // Neto SIN variables = solo salario fijo neto (sin pagas extra, sin variables)
+  // SS_fijo: sin HHEE → Base CC = Base AT = salario×12 + prorrata×12
   const ss12 = `(${CF(K.BRUTO)}*12+${CF(K.PRO)}*12)*(${CF(K.SSCC)}+${CF(K.SSDES)}+${CF(K.SSMEI)})`;
-  const nSV  = `${CF(K.BRUTO)}*12-${ss12}-${CF(K.BRUTO)}*12*${CF(K.IRPF)}+${sumFrm(R.PENET)}`;
+  const nSV  = `${CF(K.BRUTO)}*12-${ss12}-${CF(K.BRUTO)}*12*${CF(K.IRPF)}`;
 
-  sumRow(RS+1, '💰  BRUTO ANUAL con variables  (devengado total: salario + extras + exentos + pagas)', bCV, C.moradoLight, C.moradoDark, true);
-  sumRow(RS+2, '     Bruto anual sin variables  (solo salario × 12 + pagas extras)',                  bSV, C.gris,        C.muted);
-  sumRow(RS+3, '     Extra bruto generado por variables',  `(${bCV})-(${bSV})`,                            C.gris,        C.text);
+  sumRow(RS+1, '💰  BRUTO ANUAL con variables  (salario + variables + exentos + pagas extra)', bCV, C.moradoLight, C.moradoDark, true);
+  sumRow(RS+2, '     Bruto anual sin variables  (solo salario convenio × 12)',                 bSV, C.gris,        C.muted);
+  sumRow(RS+3, '     Diferencia por variables',  `(${bCV})-(${bSV})`,                              C.gris,        C.text);
 
   divRow(ws, RS+4, C.borde, 3);
 
-  sumRow(RS+5, '💳  NETO ANUAL con variables  (líquido total cobrado)',                               nCV, C.verdeLight, C.verdeSuave, true);
-  sumRow(RS+6, '     Neto anual sin variables  (solo salario fijo neto × 12 + neto pagas extras)',    nSV, C.gris,       C.muted);
-  sumRow(RS+7, '     Extra neto generado por variables',   `(${nCV})-(${nSV})`,                           C.gris,       C.text);
+  sumRow(RS+5, '💳  NETO ANUAL con variables  (líquido total: salario + variables + pagas extra)', nCV, C.verdeLight, C.verdeSuave, true);
+  sumRow(RS+6, '     Neto anual sin variables  (solo salario fijo neto × 12)',                     nSV, C.gris,       C.muted);
+  sumRow(RS+7, '     Diferencia por variables',  `(${nCV})-(${nSV})`,                                  C.gris,       C.text);
 
   divRow(ws, RS+8, C.gris, 8);
 
