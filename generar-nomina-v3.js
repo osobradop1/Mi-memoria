@@ -268,7 +268,7 @@ async function main() {
   const cl = col => CL(col);
 
   // ── DEVENGOS ────────────────────────────────────────────────────────────
-  secRow(ws, R.SEC_DEV, '📋  DEVENGOS — Las celdas amarillas son editables. Introduce el importe en €.', C.morado);
+  secRow(ws, R.SEC_DEV, '📋  DEVENGOS — Celdas amarillas editables. Variables (horas/días/km): introduce CANTIDADES. Salario, Actividad, Dieta y Paga Extra: introduce €.', C.morado);
 
   dataRow(R.SAL,  'Salario Convenio',          'SUJETO-CC',  'formula',
     (i,col) => CF(K.BRUTO), {fg:C.text, bg:C.gris});
@@ -456,7 +456,7 @@ async function main() {
 
   divRow(ws, RS+4, C.borde, 3);
 
-  sumRow(RS+5, '💳  NETO ANUAL con variables  (líquido total: salario + variables + pagas extra)', nCV, C.verdeLight, C.verdeSuave, true);
+  sumRow(RS+5, '💳  NETO ANUAL con variables  (líquido total: salario + variables + pagas extra)', nCV, C.verdeLight, C.vs, true);
   sumRow(RS+6, '     Neto anual sin variables  (solo salario fijo neto × 12)',                     nSV, C.gris,       C.muted);
   sumRow(RS+7, '     Diferencia por variables',  `(${nCV})-(${nSV})`,                                  C.gris,       C.text);
 
