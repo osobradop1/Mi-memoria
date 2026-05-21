@@ -275,23 +275,33 @@ async function main() {
   dataRow(R.ACT,  'Plus Actividad €',          'SUJETO-CC',  'input',
     (i) => i===0 ? {formula:CF(K.ACTD)} : {formula:CF(K.ACTD)});
   // Variables → el usuario introduce CANTIDAD (horas/días/km), la hoja calcula € = cantidad × precio config
-  // Feb: Plus frío 16 días, H.Desp.Fest 18h, H.Extra 24h (exactos). H.Desp ≈20.5h (1 céntimo de redondeo)
-  dataRow(R.TUR,  'Turnicidad (horas)',            'SUJETO-CC',  'input', 0,                     {fmt:NUM, totalFrm:`${sumFrm(R.TUR)}*${CF(K.PTUR)}`});
-  dataRow(R.NOC,  'Nocturnidad (horas)',           'SUJETO-CC',  'input', 0,                     {fmt:NUM, totalFrm:`${sumFrm(R.NOC)}*${CF(K.PNOC)}`});
-  dataRow(R.FRI,  'Plus frío / baja temp. (días)', 'SUJETO-CC',  'input', (i)=>i===1?16:0,       {fmt:NUM, totalFrm:`${sumFrm(R.FRI)}*${CF(K.PFRI)}`});
-  dataRow(R.DIS,  'H. Disponibilidad (horas)',     'SUJETO-CC',  'input', 0,                     {fmt:NUM, totalFrm:`${sumFrm(R.DIS)}*${CF(K.PDIS)}`});
-  dataRow(R.DIF,  'H. Disp. Festiva (horas)',      'SUJETO-CC',  'input', 0,                     {fmt:NUM, totalFrm:`${sumFrm(R.DIF)}*${CF(K.PDIF)}`});
-  dataRow(R.DES,  'H. Desplazamiento (horas)',     'CC + 7p',    'input', (i)=>i===1?20.5:0,     {fmt:NUM, tagColor:C.narDark, totalFrm:`${sumFrm(R.DES)}*${CF(K.PDES)}`});
-  dataRow(R.DESF, 'H. Desp. Festivo (horas)',      'CC + 7p',    'input', (i)=>i===1?18:0,       {fmt:NUM, tagColor:C.narDark, totalFrm:`${sumFrm(R.DESF)}*${CF(K.PDESF)}`});
-  dataRow(R.DIAF, 'Días fuera España (días)',       'contador 7p','input', 0,                     {fmt:NUM, tagColor:C.narDark, totalFrm:sumFrm(R.DIAF), totalFmt:NUM});
-  dataRow(R.HEX,  'H. Extra Normal (horas)',       'HHEE + 7p',  'input', (i)=>i===1?24:0,       {fmt:NUM, tagColor:C.morado,  totalFrm:`${sumFrm(R.HEX)}*${CF(K.PHEX)}`});
-  dataRow(R.HEXF, 'H. Extra Festiva (horas)',      'HHEE',       'input', 0,                     {fmt:NUM, tagColor:C.morado,  totalFrm:`${sumFrm(R.HEXF)}*${CF(K.PHEXF)}`});
+  // Datos pre-cargados desde Calculo_sueldo_mes.xlsx (Ene–May; Jun–Dic pendientes de rellenar)
+  const TUR_D  = [0,    0,     0,     0,    8,    0,0,0,0,0,0,0];
+  const NOC_D  = [0,    0,     0,     0,    3,    0,0,0,0,0,0,0];
+  const FRI_D  = [6,    16,    12,    0,    14,   0,0,0,0,0,0,0];
+  const DES_D  = [9.23, 22.48, 24.2,  8.48, 27.98,0,0,0,0,0,0,0];
+  const DESF_D = [1,    17,    1,     1.5,  5.5,  0,0,0,0,0,0,0];
+  const DIAF_D = [0,    6,     0,     0,    0,    0,0,0,0,0,0,0];
+  const HEX_D  = [2.5,  0,     21.67, 3,    44.5, 0,0,0,0,0,0,0];
+  const HEXF_D = [8,    24,    6.67,  10,   44.5, 0,0,0,0,0,0,0];
+  const DIETA_D= [286.56,764.16,692.52,286.56,1098.48,0,0,0,0,0,0,0];
+
+  dataRow(R.TUR,  'Turnicidad (horas)',            'SUJETO-CC',  'input', (i)=>TUR_D[i]||0,  {fmt:NUM, totalFrm:`${sumFrm(R.TUR)}*${CF(K.PTUR)}`});
+  dataRow(R.NOC,  'Nocturnidad (horas)',           'SUJETO-CC',  'input', (i)=>NOC_D[i]||0,  {fmt:NUM, totalFrm:`${sumFrm(R.NOC)}*${CF(K.PNOC)}`});
+  dataRow(R.FRI,  'Plus frío / baja temp. (días)', 'SUJETO-CC',  'input', (i)=>FRI_D[i]||0,  {fmt:NUM, totalFrm:`${sumFrm(R.FRI)}*${CF(K.PFRI)}`});
+  dataRow(R.DIS,  'H. Disponibilidad (horas)',     'SUJETO-CC',  'input', 0,                 {fmt:NUM, totalFrm:`${sumFrm(R.DIS)}*${CF(K.PDIS)}`});
+  dataRow(R.DIF,  'H. Disp. Festiva (horas)',      'SUJETO-CC',  'input', 0,                 {fmt:NUM, totalFrm:`${sumFrm(R.DIF)}*${CF(K.PDIF)}`});
+  dataRow(R.DES,  'H. Desplazamiento (horas)',     'CC + 7p',    'input', (i)=>DES_D[i]||0,  {fmt:NUM, tagColor:C.narDark, totalFrm:`${sumFrm(R.DES)}*${CF(K.PDES)}`});
+  dataRow(R.DESF, 'H. Desp. Festivo (horas)',      'CC + 7p',    'input', (i)=>DESF_D[i]||0, {fmt:NUM, tagColor:C.narDark, totalFrm:`${sumFrm(R.DESF)}*${CF(K.PDESF)}`});
+  dataRow(R.DIAF, 'Días fuera España (días)',       'contador 7p','input', (i)=>DIAF_D[i]||0, {fmt:NUM, tagColor:C.narDark, totalFrm:sumFrm(R.DIAF), totalFmt:NUM});
+  dataRow(R.HEX,  'H. Extra Normal (horas)',       'HHEE + 7p',  'input', (i)=>HEX_D[i]||0,  {fmt:NUM, tagColor:C.morado,  totalFrm:`${sumFrm(R.HEX)}*${CF(K.PHEX)}`});
+  dataRow(R.HEXF, 'H. Extra Festiva (horas)',      'HHEE',       'input', (i)=>HEXF_D[i]||0,  {fmt:NUM, tagColor:C.morado,  totalFrm:`${sumFrm(R.HEXF)}*${CF(K.PHEXF)}`});
   divRow(ws, R.DIV2, C.borde, 2);
 
   // ── EXENTOS ─────────────────────────────────────────────────────────────
   secRow(ws, R.SEC_EX, '🟢  EXENTOS — No cotizan SS ni retienen IRPF', C.verde);
   // Feb: Dieta 764.16€ (exento, importe directo). KM: introduce km, calcula € = km × 0,30
-  dataRow(R.DIETA, 'Dieta € (importe directo)',  'EXENTO', 'input', (i)=>i===1?764.16:0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
+  dataRow(R.DIETA, 'Dieta € (importe directo)',  'EXENTO', 'input', (i)=>DIETA_D[i]||0, {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
   dataRow(R.TIQ,   'Tiquets € (importe directo)','EXENTO', 'input', 0,                  {bg:C.verdeLight, fg:C.vs, tagColor:C.vs});
   dataRow(R.KM,    'KM (kilómetros)',             'EXENTO', 'input', 0,                  {fmt:NUM, bg:C.verdeLight, fg:C.vs, tagColor:C.vs, totalFrm:`${sumFrm(R.KM)}*${CF(K.PKM)}`});
   divRow(ws, R.DIV3, C.borde, 2);
